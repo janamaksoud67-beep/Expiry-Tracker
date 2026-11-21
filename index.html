@@ -1,0 +1,2349 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>متتبع صلاحية المنتجات | السوبر ماركت</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>tailwind.config = { darkMode: 'class' }</script>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <!-- Firebase (قاعدة البيانات السحابية) -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+    <style>
+        body {
+            font-family: 'Cairo', sans-serif;
+            background-color: #f1f5f9;
+            -webkit-tap-highlight-color: transparent;
+            transition: background-color 0.3s, color 0.3s;
+        }
+        body.dark { background-color: #0f172a; color: #e2e8f0; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        #reader video { border-radius: 0.75rem; object-fit: cover; }
+        @keyframes pulse-border {
+            0%, 100% { border-color: rgba(239, 68, 68, 1); }
+            50% { border-color: rgba(239, 68, 68, 0.3); }
+        }
+        .expired-pulse { animation: pulse-border 2s infinite; }
+
+        body.dark .bg-white { background-color: #1e293b !important; }
+        body.dark .bg-slate-50 { background-color: #0f172a !important; }
+        body.dark .bg-slate-100 { background-color: #1e293b !important; }
+        body.dark .bg-slate-200 { background-color: #334155 !important; }
+        body.dark .text-slate-800 { color: #e2e8f0 !important; }
+        body.dark .text-slate-700 { color: #cbd5e1 !important; }
+        body.dark .text-slate-600 { color: #94a3b8 !important; }
+        body.dark .border-slate-200 { border-color: #334155 !important; }
+        body.dark .border-slate-300 { border-color: #475569 !important; }
+        body.dark .bg-red-50\/40 { background-color: rgba(127, 29, 29, 0.3) !important; }
+        body.dark .bg-orange-50\/30 { background-color: rgba(124, 45, 18, 0.3) !important; }
+        body.dark .bg-amber-50\/70 { background-color: rgba(120, 53, 15, 0.3) !important; }
+        body.dark .bg-emerald-50 { background-color: rgba(6, 78, 59, 0.4) !important; }
+        body.dark .bg-violet-50 { background-color: rgba(76, 29, 149, 0.3) !important; }
+        body.dark .text-emerald-800 { color: #6ee7b7 !important; }
+        body.dark .border-emerald-200 { border-color: #065f46 !important; }
+        body.dark .border-violet-200 { border-color: #5b21b6 !important; }
+
+        .ai-glow { box-shadow: 0 0 20px rgba(139, 92, 246, 0.5), 0 0 40px rgba(139, 92, 246, 0.2); }
+        @keyframes ai-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+        .ai-thinking { animation: ai-pulse 1s infinite; }
+
+        .scan-btn-pulse { position: relative; }
+        .scan-btn-pulse::after {
+            content: '';
+            position: absolute;
+            inset: -3px;
+            border-radius: inherit;
+            border: 2px solid rgba(16, 185, 129, 0.5);
+            animation: scan-pulse 2s infinite;
+            pointer-events: none;
+        }
+        @keyframes scan-pulse {
+            0% { opacity: 1; transform: scale(1); }
+            100% { opacity: 0; transform: scale(1.15); }
+        }
+
+        .product-thumb { cursor: zoom-in; transition: transform 0.15s; }
+        .product-thumb:active { transform: scale(0.95); }
+
+        #imageViewer { animation: fadeIn 0.2s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        #imageViewer img { animation: zoomIn 0.25s ease-out; }
+        @keyframes zoomIn { from { transform: scale(0.85); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+        .edit-btn { transition: all 0.15s; }
+        .edit-btn:active { transform: scale(0.9); }
+
+        .date-divider {
+            background: linear-gradient(90deg, rgba(16,185,129,0.15), rgba(16,185,129,0.02));
+            border-right: 4px solid #10b981;
+        }
+        body.dark .date-divider {
+            background: linear-gradient(90deg, rgba(16,185,129,0.25), rgba(16,185,129,0.03));
+        }
+
+        .product-name-clickable { cursor: pointer; transition: color 0.15s; }
+        .product-name-clickable:hover { color: #059669; }
+
+        .product-name-full {
+            word-break: break-word;
+            line-height: 1.5;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body class="text-slate-800 pb-24 select-none">
+
+    <header class="bg-slate-900 text-white sticky top-0 z-30 shadow-lg">
+        <div class="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+                <div class="bg-emerald-500 p-2 rounded-xl text-slate-900">
+                    <i data-lucide="scan-barcode" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h1 class="font-extrabold text-lg leading-tight" data-i18n="appTitle">متتبع الصلاحية</h1>
+                    <p class="text-xs text-slate-400" data-i18n="appSubtitle">إدارة رفوف السوبر ماركت</p>
+                    <p id="syncBadge" class="text-[10px] font-bold mt-0.5"></p>
+                </div>
+            </div>
+            <div class="flex items-center gap-1.5">
+                <button onclick="toggleLanguage()" class="p-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl transition active:scale-95 text-xs font-extrabold text-emerald-400">
+                    <span id="langLabel">EN</span>
+                </button>
+                <button onclick="toggleTheme()" class="p-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl transition active:scale-95">
+                    <i id="themeIcon" data-lucide="moon" class="w-5 h-5 text-amber-400"></i>
+                </button>
+                <button onclick="openAIModal()" class="relative p-2.5 bg-gradient-to-br from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 rounded-xl transition active:scale-95">
+                    <i data-lucide="sparkles" class="w-5 h-5 text-white"></i>
+                </button>
+                <button onclick="triggerAlertCheck(true)" class="relative p-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl transition active:scale-95">
+                    <i data-lucide="bell-ring" class="w-5 h-5 text-amber-400"></i>
+                    <span id="alertBadge" class="hidden absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center">0</span>
+                </button>
+                <button onclick="openBackupModal()" class="p-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl transition active:scale-95">
+                    <i data-lucide="database-backup" class="w-5 h-5 text-sky-400"></i>
+                </button>
+            </div>
+        </div>
+
+        <div class="bg-slate-800/90 border-t border-slate-700/80 px-3 py-2.5">
+            <div class="max-w-3xl mx-auto grid grid-cols-4 gap-2 text-center">
+                <button onclick="setStatusFilter('expired')" class="bg-red-500/15 border border-red-500/40 rounded-xl p-1.5 active:scale-95 transition">
+                    <div id="count-expired" class="text-lg font-extrabold text-red-400 leading-none">0</div>
+                    <div class="text-[11px] text-red-200 mt-1 font-semibold" data-i18n="statExpired">منتهي</div>
+                </button>
+                <button onclick="setStatusFilter('danger')" class="bg-orange-500/15 border border-orange-500/40 rounded-xl p-1.5 active:scale-95 transition">
+                    <div id="count-danger" class="text-lg font-extrabold text-orange-400 leading-none">0</div>
+                    <div class="text-[11px] text-orange-200 mt-1 font-semibold" data-i18n="statDanger">خطر قريب</div>
+                </button>
+                <button onclick="setStatusFilter('warning')" class="bg-amber-500/15 border border-amber-500/40 rounded-xl p-1.5 active:scale-95 transition">
+                    <div id="count-warning" class="text-lg font-extrabold text-amber-300 leading-none">0</div>
+                    <div class="text-[11px] text-amber-100 mt-1 font-semibold" data-i18n="statWarning">مراقبة</div>
+                </button>
+                <button onclick="setStatusFilter('safe')" class="bg-emerald-500/15 border border-emerald-500/40 rounded-xl p-1.5 active:scale-95 transition">
+                    <div id="count-safe" class="text-lg font-extrabold text-emerald-400 leading-none">0</div>
+                    <div class="text-[11px] text-emerald-200 mt-1 font-semibold" data-i18n="statSafe">سليم</div>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-3xl mx-auto px-3 pt-4 space-y-4">
+        <div class="flex gap-2">
+            <div class="relative flex-1">
+                <i data-lucide="search" class="w-5 h-5 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2"></i>
+                <input type="text" id="searchInput" oninput="onSearchInput()" data-i18n-placeholder="searchPlaceholder" placeholder="ابحث باسم الصنف أو الباركود..."
+                    class="w-full bg-white border border-slate-300 rounded-2xl py-3 pr-11 pl-10 text-sm font-semibold focus:outline-none focus:border-slate-900 shadow-sm">
+                <button id="clearSearchBtn" onclick="clearSearch()" class="hidden absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-1">
+                    <i data-lucide="x-circle" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <button onclick="startScanner('search')" data-i18n-title="cameraSearch" title="بحث بالكاميرا / QR Code"
+                class="scan-btn-pulse bg-gradient-to-br from-emerald-600 to-emerald-700 text-white px-4 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-600/30 active:scale-95 transition">
+                <i data-lucide="scan-line" class="w-6 h-6"></i>
+            </button>
+        </div>
+
+        <div class="flex gap-2 overflow-x-auto no-scrollbar pb-1" id="statusFilters">
+            <button data-status="all" onclick="setStatusFilter('all')" class="status-pill active-pill px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap bg-slate-900 text-white shadow-sm" data-i18n="filterAll">الكل</button>
+            <button data-status="expired" onclick="setStatusFilter('expired')" class="status-pill px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap bg-white text-red-600 border border-slate-200" data-i18n="filterExpired">🔴 منتهي الصلاحية</button>
+            <button data-status="danger" onclick="setStatusFilter('danger')" class="status-pill px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap bg-white text-orange-600 border border-slate-200" data-i18n="filterDanger">🟠 خطر قريب</button>
+            <button data-status="warning" onclick="setStatusFilter('warning')" class="status-pill px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap bg-white text-amber-600 border border-slate-200" data-i18n="filterWarning">🟡 خلال 30 يوم</button>
+            <button data-status="safe" onclick="setStatusFilter('safe')" class="status-pill px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap bg-white text-emerald-600 border border-slate-200" data-i18n="filterSafe">🟢 سليم</button>
+        </div>
+
+        <div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-1" id="categoryFilters">
+            <button data-cat="all" onclick="setCategoryFilter('all')" class="cat-pill px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap bg-slate-200 text-slate-900" data-i18n="catAll">جميع الأقسام</button>
+            <button data-cat="dairy" onclick="setCategoryFilter('dairy')" class="cat-pill px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap bg-white text-slate-600 border border-slate-200" data-i18n="catDairy">🥛 ألبان وأجبان</button>
+            <button data-cat="canned" onclick="setCategoryFilter('canned')" class="cat-pill px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap bg-white text-slate-600 border border-slate-200" data-i18n="catCanned">🥫 معلبات</button>
+            <button data-cat="drinks" onclick="setCategoryFilter('drinks')" class="cat-pill px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap bg-white text-slate-600 border border-slate-200" data-i18n="catDrinks">🧃 مشروبات</button>
+            <button data-cat="sweets" onclick="setCategoryFilter('sweets')" class="cat-pill px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap bg-white text-slate-600 border border-slate-200" data-i18n="catSweets">🍫 حلويات</button>
+            <button data-cat="frozen" onclick="setCategoryFilter('frozen')" class="cat-pill px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap bg-white text-slate-600 border border-slate-200" data-i18n="catFrozen">❄️ مجمدات</button>
+            <button data-cat="other" onclick="setCategoryFilter('other')" class="cat-pill px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap bg-white text-slate-600 border border-slate-200" data-i18n="catOther">📦 أخرى</button>
+        </div>
+
+        <div id="summaryBar" class="hidden bg-white rounded-2xl border border-slate-200 p-3 shadow-sm">
+            <div class="flex items-center justify-between gap-2 flex-wrap text-xs font-bold">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="package-search" class="w-4 h-4 text-emerald-600"></i>
+                    <span id="summaryText" class="text-slate-700"></span>
+                </div>
+                <span id="summaryTotal" class="bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-lg"></span>
+            </div>
+        </div>
+
+        <div id="batchesList" class="space-y-3"></div>
+
+        <div id="paginationControls" class="hidden flex items-center justify-center gap-1.5 flex-wrap py-2"></div>
+
+        <div id="emptyState" class="hidden text-center py-12 px-4 bg-white rounded-3xl border border-dashed border-slate-300">
+            <div class="bg-slate-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-400">
+                <i data-lucide="package-open" class="w-8 h-8"></i>
+            </div>
+            <h3 class="font-bold text-slate-700 text-base" data-i18n="emptyTitle">لا توجد أصناف مطابقة</h3>
+            <p class="text-xs text-slate-500 mt-1" data-i18n="emptySubtitle">اضغط على زر الإضافة بالأسفل لمسح باركود جديد</p>
+        </div>
+    </main>
+
+    <div class="fixed bottom-5 left-0 right-0 z-30 flex justify-center px-4 pointer-events-none">
+        <button onclick="openAddModal()" class="pointer-events-auto bg-emerald-600 hover:bg-emerald-700 active:scale-95 transition text-white font-extrabold text-base px-7 py-4 rounded-2xl shadow-xl shadow-emerald-900/25 flex items-center gap-3">
+            <i data-lucide="plus-circle" class="w-6 h-6"></i>
+            <span data-i18n="addBtn">إضافة صنف / مسح باركود</span>
+        </button>
+    </div>
+
+    <!-- نافذة تفاصيل المنتج -->
+    <div id="productDetailModal" class="hidden fixed inset-0 z-[55] bg-slate-950/85 backdrop-blur-sm overflow-y-auto p-3 sm:p-6">
+        <div class="bg-white rounded-3xl max-w-lg w-full mx-auto my-4 shadow-2xl overflow-hidden">
+            <div class="bg-slate-900 text-white px-5 py-4 flex items-center justify-between sticky top-0 z-10">
+                <h3 class="font-extrabold text-base flex items-center gap-2">
+                    <i data-lucide="package" class="w-5 h-5 text-emerald-400"></i>
+                    <span data-i18n="productDetails">تفاصيل المنتج</span>
+                </h3>
+                <button onclick="closeProductDetail()" class="bg-slate-800 p-1.5 rounded-xl text-slate-300 hover:text-white">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div id="productDetailContent" class="p-5 space-y-4"></div>
+        </div>
+    </div>
+
+    <div id="imageViewer" class="hidden fixed inset-0 z-[60] bg-black/95 flex items-center justify-center p-4">
+        <button onclick="closeImageViewer()" class="absolute top-4 right-4 bg-white/20 hover:bg-white/30 text-white p-2.5 rounded-full z-10 active:scale-90 transition">
+            <i data-lucide="x" class="w-6 h-6"></i>
+        </button>
+        <img id="viewerImage" src="" alt="Product" class="max-w-full max-h-full object-contain rounded-2xl shadow-2xl">
+    </div>
+
+    <div id="scannerModal" class="hidden fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-sm flex flex-col justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-md w-full mx-auto overflow-hidden shadow-2xl">
+            <div class="bg-slate-900 text-white px-4 py-3.5 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="scan" class="w-5 h-5 text-emerald-400"></i>
+                    <span class="font-bold text-sm" id="scannerTitle" data-i18n="scannerTitle">وجّه الكاميرا نحو الباركود</span>
+                </div>
+                <button onclick="stopScanner()" class="bg-slate-800 p-1.5 rounded-xl text-slate-300 hover:text-white">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div class="p-4 bg-slate-900">
+                <div id="reader" class="w-full overflow-hidden rounded-2xl bg-black min-h-[250px]"></div>
+                <p id="scannerError" class="hidden text-red-400 text-xs text-center mt-3 font-semibold"></p>
+                <p class="text-emerald-400 text-[11px] text-center mt-2 font-semibold flex items-center justify-center gap-1">
+                    <i data-lucide="qr-code" class="w-3.5 h-3.5"></i>
+                    <span data-i18n="supportsQR">يدعم الباركود و QR Code</span>
+                </p>
+            </div>
+            <div class="p-4 bg-white text-center">
+                <button onclick="stopScanner()" class="w-full py-3 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold rounded-xl text-sm" data-i18n="closeCamera">إغلاق الكاميرا والإدخال يدوياً</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="addModal" class="hidden fixed inset-0 z-40 bg-slate-950/75 backdrop-blur-xs overflow-y-auto p-3 sm:p-6">
+        <div class="bg-white rounded-3xl max-w-lg w-full mx-auto my-2 shadow-2xl overflow-hidden">
+            <div class="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
+                <h2 class="font-extrabold text-base flex items-center gap-2">
+                    <i data-lucide="package-plus" class="w-5 h-5 text-emerald-400"></i>
+                    <span id="modalTitle" data-i18n="addModalTitle">تسجيل تاريخ صلاحية صنف</span>
+                </h2>
+                <button onclick="closeAddModal()" class="bg-slate-800 p-1.5 rounded-xl text-slate-300 hover:text-white">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <form id="productForm" onsubmit="saveBatch(event)" class="p-5 space-y-4">
+                <input type="hidden" id="editBatchId" value="">
+                <div id="autoFillBanner" class="hidden bg-emerald-50 border border-emerald-200 text-emerald-800 px-3.5 py-2.5 rounded-2xl text-xs font-bold flex items-center gap-2">
+                    <i data-lucide="sparkles" class="w-4 h-4 text-emerald-600 shrink-0"></i>
+                    <span data-i18n="autoFillMsg">تم التعرف على المنتج تلقائياً! أدخل تاريخ الانتهاء الجديد والكمية فقط.</span>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1.5" data-i18n="barcodeLabel">رقم الباركود (اختياري أو بالمسح)</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="inputBarcode" oninput="handleBarcodeLookup(this.value)" data-i18n-placeholder="barcodePlaceholder" placeholder="امسح أو اكتب الرقم هنا..."
+                            class="flex-1 bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-3 text-sm font-bold focus:outline-none focus:border-emerald-600 focus:bg-white">
+                        <button type="button" onclick="startScanner('form')" class="bg-slate-900 hover:bg-slate-800 text-white px-4 rounded-xl font-bold text-xs flex items-center gap-1.5 active:scale-95 transition shrink-0">
+                            <i data-lucide="scan-barcode" class="w-5 h-5 text-emerald-400"></i>
+                            <span data-i18n="scanBtn">مسح</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-sky-50/70 border border-sky-200 p-3 rounded-2xl flex items-center justify-between gap-2">
+                    <div class="flex items-center gap-2 text-sky-800">
+                        <i data-lucide="calendar-plus" class="w-5 h-5 text-sky-600"></i>
+                        <div>
+                            <div class="text-[11px] font-extrabold" data-i18n="entryDateLabel">تاريخ الدخول</div>
+                            <div class="text-[10px] text-sky-600" data-i18n="entryDateHint">افتراضياً: اليوم</div>
+                        </div>
+                    </div>
+                    <input type="date" id="inputEntryDate" class="bg-white border border-sky-300 rounded-xl px-2.5 py-1.5 text-xs font-extrabold text-sky-900 focus:outline-none focus:border-sky-600">
+                </div>
+
+                <div class="flex gap-3 items-start">
+                    <div class="shrink-0">
+                        <label class="block text-xs font-bold text-slate-700 mb-1.5 text-center" data-i18n="photoLabel">صورة</label>
+                        <label for="inputImage" class="cursor-pointer block w-20 h-20 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100 overflow-hidden relative flex flex-col items-center justify-center text-slate-400 transition">
+                            <img id="imagePreview" src="" alt="preview" class="hidden w-full h-full object-cover">
+                            <div id="imagePlaceholder" class="flex flex-col items-center">
+                                <i data-lucide="camera" class="w-6 h-6 text-slate-500"></i>
+                                <span class="text-[10px] font-bold mt-1" data-i18n="takePhoto">التقط</span>
+                            </div>
+                        </label>
+                        <input type="file" id="inputImage" accept="image/*" capture="environment" onchange="processImage(event)" class="hidden">
+                        <button type="button" id="removeImgBtn" onclick="clearImage()" class="hidden w-full text-[10px] text-red-600 font-bold mt-1 text-center" data-i18n="removePhoto">حذف الصورة</button>
+                    </div>
+
+                    <div class="flex-1 space-y-3">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1" data-i18n="nameLabel">اسم الصنف *</label>
+                            <input type="text" id="inputName" required data-i18n-placeholder="namePlaceholder" placeholder="مثال: لبنة المراعي 400 غرام"
+                                class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-bold focus:outline-none focus:border-emerald-600 focus:bg-white">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1" data-i18n="categoryLabel">القسم</label>
+                            <select id="inputCategory" onchange="suggestAlertDays()" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none focus:border-emerald-600">
+                                <option value="dairy" data-i18n="catDairy">🥛 ألبان وأجبان</option>
+                                <option value="canned" data-i18n="catCanned">🥫 معلبات</option>
+                                <option value="drinks" data-i18n="catDrinks">🧃 مشروبات</option>
+                                <option value="sweets" data-i18n="catSweets">🍫 حلويات</option>
+                                <option value="frozen" data-i18n="catFrozen">❄️ مجمدات</option>
+                                <option value="other" data-i18n="catOther">📦 أخرى</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-amber-50/70 border border-amber-200 p-3.5 rounded-2xl">
+                    <label class="block text-xs font-extrabold text-slate-800 mb-1.5 flex items-center justify-between">
+                        <span data-i18n="expiryLabel">تاريخ انتهاء الصلاحية *</span>
+                        <span id="daysPreviewText" class="text-xs font-bold text-emerald-700"></span>
+                    </label>
+                    <input type="date" id="inputExpiry" required onchange="updateDaysPreview()"
+                        class="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-3 text-base font-extrabold text-slate-900 focus:outline-none focus:border-emerald-600">
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1.5" data-i18n="qtyLabel">الكمية على الرف</label>
+                        <div class="flex items-center border border-slate-300 rounded-xl overflow-hidden bg-slate-50">
+                            <button type="button" onclick="adjustFormQty(-1)" class="px-3.5 py-2.5 bg-slate-200 hover:bg-slate-300 font-extrabold text-lg">-</button>
+                            <input type="number" id="inputQty" value="1" min="1" required class="w-full text-center bg-transparent font-extrabold text-base focus:outline-none">
+                            <button type="button" onclick="adjustFormQty(1)" class="px-3.5 py-2.5 bg-slate-200 hover:bg-slate-300 font-extrabold text-lg">+</button>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1.5" data-i18n="alertDaysLabel">نبهني قبل (أيام)</label>
+                        <input type="number" id="inputAlertDays" value="7" min="1" max="180" required
+                            class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-base font-extrabold text-center focus:outline-none focus:border-emerald-600">
+                    </div>
+                </div>
+
+                <div class="pt-2 flex gap-2.5">
+                    <button type="submit" id="saveBtnText" class="flex-1 bg-emerald-600 hover:bg-emerald-700 active:scale-95 transition text-white font-extrabold py-3.5 rounded-2xl text-base shadow-lg shadow-emerald-600/20" data-i18n="saveBtn">حفظ الصنف</button>
+                    <button type="button" onclick="closeAddModal()" class="px-5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3.5 rounded-2xl text-sm" data-i18n="cancelBtn">إلغاء</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="backupModal" class="hidden fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+        <div class="bg-white rounded-3xl max-w-md w-full my-4 overflow-hidden shadow-2xl">
+            <div class="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
+                <h3 class="font-extrabold text-base flex items-center gap-2">
+                    <i data-lucide="shield-check" class="w-5 h-5 text-sky-400"></i>
+                    <span data-i18n="backupTitle">النسخ الاحتياطي وإدارة البيانات</span>
+                </h3>
+                <button onclick="closeBackupModal()" class="bg-slate-800 p-1.5 rounded-xl text-slate-300">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div class="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+
+                <!-- قسم المزامنة السحابية -->
+                <div class="bg-violet-50 border border-violet-200 rounded-2xl p-3 space-y-2.5">
+                    <h4 class="font-extrabold text-violet-900 text-xs flex items-center gap-1.5">
+                        <i data-lucide="cloud" class="w-4 h-4 text-violet-600"></i>
+                        <span data-i18n="cloudSection">المزامنة السحابية (قاعدة البيانات)</span>
+                    </h4>
+                    <p id="cloudStatusText" class="text-[11px] font-bold text-slate-700 leading-relaxed"></p>
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-700 mb-1" data-i18n="shopCodeLabel">كود المحل (أحرف إنجليزية وأرقام)</label>
+                        <div class="flex gap-2">
+                            <input type="text" id="shopCodeInput" dir="ltr" maxlength="40" placeholder="main"
+                                class="flex-1 bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold focus:outline-none focus:border-violet-600">
+                            <button onclick="applyShopCode()" class="bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold px-3 rounded-xl active:scale-95 transition" data-i18n="applyShop">تطبيق</button>
+                        </div>
+                    </div>
+                    <button onclick="copyShareLink()" class="w-full bg-violet-600 hover:bg-violet-700 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 active:scale-95 transition">
+                        <i data-lucide="link" class="w-4 h-4"></i>
+                        <span data-i18n="copyLink">نسخ رابط المشاركة</span>
+                    </button>
+                </div>
+
+                <p class="text-xs text-slate-600 leading-relaxed bg-slate-100 p-3 rounded-xl" data-i18n="backupInfo">
+                    ننصح بتصدير نسخة احتياطية كل أسبوع.
+                </p>
+
+                <div class="bg-sky-50 border border-sky-200 rounded-2xl p-3">
+                    <h4 class="font-extrabold text-sky-900 text-xs mb-2.5 flex items-center gap-1.5">
+                        <i data-lucide="download" class="w-4 h-4 text-sky-600"></i>
+                        <span data-i18n="exportSection">تصدير البيانات</span>
+                    </h4>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button onclick="exportExcelWithImages()" class="col-span-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-bold py-3 px-3 rounded-xl flex items-center justify-center gap-2 shadow-md active:scale-95 transition">
+                            <i data-lucide="image" class="w-5 h-5"></i>
+                            <span class="text-xs" data-i18n="exportExcelImagesBtn">Excel مع الصور 🖼️</span>
+                        </button>
+                        <button onclick="exportExcel()" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 px-2 rounded-xl flex flex-col items-center justify-center gap-1 shadow-sm active:scale-95 transition">
+                            <i data-lucide="file-spreadsheet" class="w-5 h-5"></i>
+                            <span class="text-[10px]" data-i18n="exportExcelBtn">Excel (XLSX)</span>
+                        </button>
+                        <button onclick="exportCSV()" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-2.5 px-2 rounded-xl flex flex-col items-center justify-center gap-1 shadow-sm active:scale-95 transition">
+                            <i data-lucide="file-text" class="w-5 h-5"></i>
+                            <span class="text-[10px]" data-i18n="exportCSVBtn">CSV</span>
+                        </button>
+                        <button onclick="exportData()" class="bg-sky-600 hover:bg-sky-700 text-white font-bold py-2.5 px-2 rounded-xl flex flex-col items-center justify-center gap-1 shadow-sm active:scale-95 transition">
+                            <i data-lucide="file-json" class="w-5 h-5"></i>
+                            <span class="text-[10px]" data-i18n="exportJSONBtn">JSON</span>
+                        </button>
+                        <button onclick="exportGoogleSheets()" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2.5 px-2 rounded-xl flex flex-col items-center justify-center gap-1 shadow-sm active:scale-95 transition">
+                            <i data-lucide="table" class="w-5 h-5"></i>
+                            <span class="text-[10px]" data-i18n="exportGoogleBtn">Google Sheets</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-emerald-50 border border-emerald-200 rounded-2xl p-3">
+                    <h4 class="font-extrabold text-emerald-900 text-xs mb-2.5 flex items-center gap-1.5">
+                        <i data-lucide="upload" class="w-4 h-4 text-emerald-600"></i>
+                        <span data-i18n="importSection">استيراد البيانات</span>
+                    </h4>
+                    <label class="w-full cursor-pointer bg-slate-800 hover:bg-slate-900 text-white font-bold py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 shadow-sm active:scale-95 transition text-xs">
+                        <i data-lucide="file-up" class="w-4 h-4 text-emerald-400"></i>
+                        <span data-i18n="importBtn">استعادة من ملف (JSON/CSV/XLSX)</span>
+                        <input type="file" accept=".json,.csv,.xlsx,.xls" onchange="importData(event)" class="hidden">
+                    </label>
+                </div>
+
+                <button onclick="loadEmbeddedData()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-2xl flex items-center justify-center gap-2.5 shadow-sm active:scale-95 transition text-xs">
+                    <i data-lucide="package-check" class="w-4 h-4"></i>
+                    <span data-i18n="loadEmbeddedBtn">تحميل البيانات المضمّنة في الملف</span>
+                </button>
+
+                <hr class="border-slate-200">
+
+                <button onclick="requestClearAll()" class="w-full bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2">
+                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                    <span data-i18n="clearAllBtn">مسح جميع البيانات</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="aiModal" class="hidden fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm overflow-y-auto p-3 sm:p-6">
+        <div class="bg-white rounded-3xl max-w-2xl w-full mx-auto my-4 shadow-2xl overflow-hidden ai-glow">
+            <div class="bg-gradient-to-r from-purple-700 to-indigo-700 text-white px-5 py-4 flex items-center justify-between">
+                <h3 class="font-extrabold text-base flex items-center gap-2">
+                    <i data-lucide="sparkles" class="w-5 h-5 text-yellow-300"></i>
+                    <span data-i18n="aiTitle">المساعد الذكي</span>
+                </h3>
+                <button onclick="closeAIModal()" class="bg-white/20 p-1.5 rounded-xl text-white hover:bg-white/30">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div class="p-5 space-y-4">
+                <div class="bg-purple-50 border border-purple-200 rounded-2xl p-4">
+                    <p class="text-sm text-purple-900 font-semibold leading-relaxed" data-i18n="aiWelcome">👋 مرحباً! أنا مساعدك الذكي.</p>
+                </div>
+                <div id="aiLoading" class="hidden text-center py-6">
+                    <div class="inline-flex items-center gap-2 text-purple-700 font-bold ai-thinking">
+                        <i data-lucide="brain-circuit" class="w-6 h-6"></i>
+                        <span data-i18n="aiThinking">جاري التحليل الذكي...</span>
+                    </div>
+                </div>
+                <div id="aiContent" class="space-y-3"></div>
+                <div class="grid grid-cols-2 gap-2 pt-2">
+                    <button onclick="runAIAnalysis()" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-xl text-xs flex items-center justify-center gap-2 active:scale-95 transition">
+                        <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                        <span data-i18n="aiAnalyzeBtn">تحليل البيانات</span>
+                    </button>
+                    <button onclick="runAIPriority()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl text-xs flex items-center justify-center gap-2 active:scale-95 transition">
+                        <i data-lucide="list-ordered" class="w-4 h-4"></i>
+                        <span data-i18n="aiPriorityBtn">أولويات العمل</span>
+                    </button>
+                    <button onclick="runAIReport()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl text-xs flex items-center justify-center gap-2 active:scale-95 transition">
+                        <i data-lucide="file-text" class="w-4 h-4"></i>
+                        <span data-i18n="aiReportBtn">تقرير شامل</span>
+                    </button>
+                    <button onclick="runAIAdvice()" class="bg-amber-600 hover:bg-amber-700 text-white font-bold py-3 rounded-xl text-xs flex items-center justify-center gap-2 active:scale-95 transition">
+                        <i data-lucide="lightbulb" class="w-4 h-4"></i>
+                        <span data-i18n="aiAdviceBtn">نصائح ذكية</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="confirmDialog" class="hidden fixed inset-0 z-[70] bg-slate-950/80 flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl text-center space-y-4">
+            <div class="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto">
+                <i data-lucide="alert-triangle" class="w-6 h-6"></i>
+            </div>
+            <h4 id="confirmTitle" class="font-extrabold text-slate-900 text-base">تأكيد العملية</h4>
+            <p id="confirmMessage" class="text-xs text-slate-600 leading-relaxed"></p>
+            <div class="flex gap-2.5 pt-1">
+                <button id="confirmYesBtn" class="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-2.5 rounded-xl text-sm" data-i18n="confirmYes">نعم، متأكد</button>
+                <button onclick="closeConfirmDialog()" class="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold py-2.5 rounded-xl text-sm" data-i18n="cancelBtn">إلغاء</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="fixed top-20 left-1/2 -translate-x-1/2 z-[80] pointer-events-none opacity-0 transition-all duration-300 transform -translate-y-2">
+        <div id="toastContent" class="bg-slate-900 text-white px-4 py-2.5 rounded-2xl shadow-xl text-xs font-bold flex items-center gap-2 border border-slate-700">
+            <span id="toastIcon"></span>
+            <span id="toastText"></span>
+        </div>
+    </div>
+
+<script>
+// ==========================================================
+// ⚙️ الخطوة المهمة: الصق إعدادات Firebase الخاصة بك هنا
+// (راجع الشرح خطوة بخطوة). طالما القيم "PASTE_..." يعمل التطبيق محلياً فقط.
+// ==========================================================
+const FIREBASE_CONFIG = {
+    apiKey: "AIzaSyBqruXmy6oz9jV4EJtZt7Zq6hnyO-vBhv8",
+    authDomain: "expire-date-60878.firebaseapp.com",
+    projectId: "expire-date-60878",
+    storageBucket: "expire-date-60878.firebasestorage.app",
+    messagingSenderId: "861436144038",
+    appId: "1:861436144038:web:db485c183dfaadecc9c767",
+    measurementId: "G-DPBX36PCXT"
+};
+
+// ==========================================
+// بيانات مضمّنة
+// ==========================================
+const EMBEDDED_DATA = {
+    version: 2,
+    exportedAt: "2025-01-01T00:00:00.000Z",
+    batches: [],
+    catalog: {}
+};
+
+const I18N = {
+    ar: {
+        appTitle: 'متتبع الصلاحية', appSubtitle: 'إدارة رفوف السوبر ماركت',
+        searchPlaceholder: 'ابحث باسم الصنف أو الباركود...', cameraSearch: 'بحث بالكاميرا / QR Code',
+        scanHint: 'اضغط زر المسح للبحث بالباركود أو QR Code',
+        supportsQR: 'يدعم الباركود و QR Code',
+        filterAll: 'الكل', filterExpired: '🔴 منتهي الصلاحية', filterDanger: '🟠 خطر قريب',
+        filterWarning: '🟡 خلال 30 يوم', filterSafe: '🟢 سليم',
+        catAll: 'جميع الأقسام', catDairy: '🥛 ألبان وأجبان', catCanned: '🥫 معلبات',
+        catDrinks: '🧃 مشروبات', catSweets: '🍫 حلويات', catFrozen: '❄️ مجمدات', catOther: '📦 أخرى',
+        emptyTitle: 'لا توجد أصناف مطابقة', emptySubtitle: 'اضغط على زر الإضافة بالأسفل لمسح باركود جديد',
+        addBtn: 'إضافة صنف / مسح باركود', scannerTitle: 'وجّه الكاميرا نحو الباركود',
+        scannerSearchTitle: 'امسح باركود / QR Code للبحث عن الصنف', scannerAddTitle: 'امسح باركود / QR Code لإضافة الصنف',
+        closeCamera: 'إغلاق الكاميرا والإدخال يدوياً',
+        cameraError: 'تعذر الوصول للكاميرا. تأكد من إعطاء صلاحية الكاميرا.', cameraNotSupported: 'المتصفح لا يدعم الكاميرا.',
+        addModalTitle: 'تسجيل تاريخ صلاحية صنف',
+        editModalTitle: 'تعديل بيانات الصنف',
+        autoFillMsg: 'تم التعرف على المنتج تلقائياً! أدخل تاريخ الانتهاء الجديد والكمية فقط.',
+        barcodeLabel: 'رقم الباركود (اختياري أو بالمسح)', barcodePlaceholder: 'امسح أو اكتب الرقم هنا...',
+        scanBtn: 'مسح', photoLabel: 'صورة', takePhoto: 'التقط', removePhoto: 'حذف الصورة',
+        nameLabel: 'اسم الصنف *', namePlaceholder: 'مثال: لبنة المراعي 400 غرام',
+        categoryLabel: 'القسم', expiryLabel: 'تاريخ انتهاء الصلاحية *',
+        entryDateLabel: 'تاريخ الدخول', entryDateHint: 'افتراضياً: اليوم',
+        qtyLabel: 'الكمية على الرف', alertDaysLabel: 'نبهني قبل (أيام)',
+        saveBtn: 'حفظ الصنف', updateBtn: 'تحديث الصنف', cancelBtn: 'إلغاء',
+        backupTitle: 'النسخ الاحتياطي وإدارة البيانات',
+        backupInfo: 'ننصح بتصدير نسخة احتياطية كل أسبوع.',
+        exportSection: 'تصدير البيانات',
+        importSection: 'استيراد البيانات',
+        exportExcelBtn: 'Excel (XLSX)', exportCSVBtn: 'CSV',
+        exportJSONBtn: 'JSON', exportGoogleBtn: 'Google Sheets',
+        exportExcelImagesBtn: 'Excel مع الصور 🖼️',
+        exportBtn: 'تصدير نسخة احتياطية (JSON)', importBtn: 'استعادة من ملف (JSON/CSV/XLSX)',
+        clearAllBtn: 'مسح جميع البيانات من التطبيق',
+        loadEmbeddedBtn: 'تحميل البيانات المضمّنة في الملف',
+        embeddedLoaded: (n) => `تم تحميل ${n} صنف من البيانات المضمّنة!`,
+        embeddedEmpty: 'لا توجد بيانات مضمّنة في الملف.',
+        // السحابة
+        cloudSection: 'المزامنة السحابية (قاعدة البيانات)',
+        shopCodeLabel: 'كود المحل (أحرف إنجليزية وأرقام)',
+        applyShop: 'تطبيق', copyLink: 'نسخ رابط المشاركة',
+        cloudOnText: (shop) => `✅ متصل بقاعدة البيانات. كل من يفتح الرابط بنفس كود المحل (${shop}) يرى نفس البيانات ويتحدث مباشرة.`,
+        cloudOffText: '⚠️ قاعدة البيانات غير مفعّلة. التطبيق يحفظ على هذا الجهاز فقط. الصق إعدادات Firebase داخل الكود لتفعيلها.',
+        linkCopied: 'تم نسخ الرابط! أرسله لمن تريد',
+        shopChanged: 'جاري التبديل للمحل الجديد...',
+        cloudNotConfigured: 'فعّل Firebase أولاً (الصق الإعدادات في الكود)',
+        syncOnline: '☁️ متصل ومتزامن', syncOffline: '📴 بلا اتصال (سيتزامن لاحقاً)',
+        syncLocal: '💾 محلي فقط', syncError: '❌ خطأ بالمزامنة',
+        writeError: 'تعذر الحفظ في السحابة. تحقق من قواعد Firestore والإنترنت.',
+        migrateTitle: 'رفع بياناتك القديمة؟',
+        migrateMsg: (n) => `قاعدة البيانات فارغة وعندك ${n} صنف محفوظ على هذا الجهاز. هل ترفعها للسحابة؟`,
+        aiTitle: 'المساعد الذكي', aiWelcome: '👋 مرحباً! أنا مساعدك الذكي.',
+        aiThinking: 'جاري التحليل الذكي...', aiAnalyzeBtn: 'تحليل البيانات',
+        aiPriorityBtn: 'أولويات العمل', aiReportBtn: 'تقرير شامل', aiAdviceBtn: 'نصائح ذكية',
+        confirmYes: 'نعم، متأكد',
+        statExpired: 'منتهي', statDanger: 'خطر قريب', statWarning: 'مراقبة', statSafe: 'سليم',
+        expiredSince: (d) => `منتهي منذ ${d} يوم`, expiresToday: 'ينتهي اليوم!',
+        daysLeft: (d) => d === 1 ? 'باقي يوم واحد!' : `باقي ${d} أيام`,
+        daysLeftShort: (d) => `باقي ${d} يوم`, expiryDate: 'ينتهي في:', qty: 'الكمية:',
+        entryDate: 'دخل في:',
+        dispose: 'تم التصريف', disposeConfirmTitle: 'تم تصريف الكمية؟',
+        disposeConfirmMsg: (name) => `هل تريد إزالة "${name}" من قائمة المتابعة؟`,
+        editBtn: 'تعديل',
+        editSuccess: 'تم تحديث بيانات الصنف بنجاح',
+        saveSuccess: 'تم حفظ الصنف بنجاح على الرف', removeSuccess: 'تمت إزالة الدفعة من القائمة',
+        clearAllConfirmTitle: 'مسح جميع البيانات؟', clearAllConfirmMsg: 'سيتم حذف كافة المنتجات نهائياً (ومن السحابة أيضاً لجميع المستخدمين). هل أنت متأكد؟',
+        clearAllSuccess: 'تم مسح جميع البيانات', exportSuccess: 'تم تنزيل ملف النسخة الاحتياطية بنجاح',
+        exportExcelSuccess: 'تم تصدير ملف Excel بنجاح',
+        exportExcelImagesSuccess: 'تم تصدير Excel مع الصور بنجاح! 🖼️',
+        exportCSVSuccess: 'تم تصدير ملف CSV بنجاح',
+        exportGoogleSuccess: 'تم تجهيز البيانات! الصقها في Google Sheets',
+        importSuccess: (n) => `تمت استعادة ${n} صنف بنجاح!`, importInvalid: 'صيغة الملف غير صالحة',
+        importError: 'فشل قراءة الملف.', noAlerts: 'ممتاز! لا توجد أصناف منتهية أو في منطقة الخطر.',
+        alertMsg: (e, d) => `تنبيه: لديك ${e} صنف منتهي، و ${d} قريب الانتهاء!`,
+        storageError: 'الذاكرة ممتلئة!', readError: 'حدث خطأ في قراءة الذاكرة المحلية',
+        searchSuccess: (code) => `تم البحث عن الباركود: ${code}`,
+        daysRemaining: (d) => `متبقي ${d} يوم`, expiredSinceShort: (d) => `⚠️ منتهي منذ ${d} يوم`,
+        expiresTodayShort: '⚠️ ينتهي اليوم',
+        aiAnalysisTitle: '📊 تحليل البيانات', aiPriorityTitle: '🎯 أولويات العمل',
+        aiReportTitle: '📋 تقرير شامل', aiAdviceTitle: '💡 نصائح ذكية',
+        aiNoData: 'لا توجد بيانات كافية للتحليل.', aiHealthy: '✅ وضعك ممتاز!',
+        aiTotal: 'إجمالي الأصناف', aiTotalQty: 'إجمالي الكميات',
+        aiCategories: 'الأقسام', aiRiskRate: 'نسبة المخاطر',
+        aiActionRequired: 'إجراء مطلوب فوراً', aiActionSoon: 'إجراء قريب',
+        aiActionMonitor: 'مراقبة', aiActionOk: 'سليم',
+        draftRestored: 'تم استعادة مسودتك السابقة',
+        copiedToClipboard: 'تم النسخ إلى الحافظة!',
+        exportingImages: 'جاري تجهيز Excel مع الصور...',
+        viewImage: 'عرض الصورة',
+        summaryText: (n) => `إجمالي ${n} منتج معروض`,
+        pageLabel: (a, b) => `صفحة ${a} من ${b}`,
+        prevPage: 'السابق', nextPage: 'التالي',
+        products: 'منتج',
+        perPage: 'لكل صفحة',
+        today: 'اليوم',
+        yesterday: 'أمس',
+        productDetails: 'تفاصيل المنتج',
+        productDescription: 'الوصف',
+        productImage: 'صورة المنتج',
+        noImage: 'لا توجد صورة',
+        closeBtn: 'إغلاق'
+    },
+    en: {
+        appTitle: 'Expiry Tracker', appSubtitle: 'Supermarket Shelf Management',
+        searchPlaceholder: 'Search by name or barcode...', cameraSearch: 'Camera / QR Search',
+        scanHint: 'Tap the scan button to search by barcode or QR Code',
+        supportsQR: 'Supports Barcode & QR Code',
+        filterAll: 'All', filterExpired: '🔴 Expired', filterDanger: '🟠 Near Danger',
+        filterWarning: '🟡 Within 30 days', filterSafe: '🟢 Safe',
+        catAll: 'All Categories', catDairy: '🥛 Dairy & Cheese', catCanned: '🥫 Canned',
+        catDrinks: '🧃 Drinks', catSweets: '🍫 Sweets', catFrozen: '❄️ Frozen', catOther: '📦 Other',
+        emptyTitle: 'No matching items', emptySubtitle: 'Tap the add button below to scan a new barcode',
+        addBtn: 'Add Item / Scan Barcode', scannerTitle: 'Point camera at barcode',
+        scannerSearchTitle: 'Scan barcode / QR Code to search', scannerAddTitle: 'Scan barcode / QR Code to add item',
+        closeCamera: 'Close camera & enter manually',
+        cameraError: 'Cannot access camera. Please grant camera permission.', cameraNotSupported: 'Browser does not support camera.',
+        addModalTitle: 'Register Product Expiry',
+        editModalTitle: 'Edit Product Data',
+        autoFillMsg: 'Product recognized automatically! Just enter new expiry date and quantity.',
+        barcodeLabel: 'Barcode (optional or scan)', barcodePlaceholder: 'Scan or type barcode here...',
+        scanBtn: 'Scan', photoLabel: 'Photo', takePhoto: 'Take', removePhoto: 'Remove Photo',
+        nameLabel: 'Product Name *', namePlaceholder: 'e.g. Almarai Labneh 400g',
+        categoryLabel: 'Category', expiryLabel: 'Expiry Date *',
+        entryDateLabel: 'Entry Date', entryDateHint: 'Default: Today',
+        qtyLabel: 'Shelf Quantity', alertDaysLabel: 'Alert before (days)',
+        saveBtn: 'Save Product', updateBtn: 'Update Product', cancelBtn: 'Cancel',
+        backupTitle: 'Backup & Data Management',
+        backupInfo: 'We recommend exporting a backup weekly.',
+        exportSection: 'Export Data',
+        importSection: 'Import Data',
+        exportExcelBtn: 'Excel (XLSX)', exportCSVBtn: 'CSV',
+        exportJSONBtn: 'JSON', exportGoogleBtn: 'Google Sheets',
+        exportExcelImagesBtn: 'Excel with Images 🖼️',
+        exportBtn: 'Export Backup (JSON)', importBtn: 'Restore from File (JSON/CSV/XLSX)',
+        clearAllBtn: 'Clear All Data',
+        loadEmbeddedBtn: 'Load Embedded Data from File',
+        embeddedLoaded: (n) => `Loaded ${n} items from embedded data!`,
+        embeddedEmpty: 'No embedded data in file.',
+        // Cloud
+        cloudSection: 'Cloud Sync (Database)',
+        shopCodeLabel: 'Shop code (English letters & numbers)',
+        applyShop: 'Apply', copyLink: 'Copy share link',
+        cloudOnText: (shop) => `✅ Connected to the database. Anyone opening the link with the same shop code (${shop}) sees the same data live.`,
+        cloudOffText: '⚠️ Database not enabled. Data is saved on this device only. Paste your Firebase config in the code to enable it.',
+        linkCopied: 'Link copied! Send it to anyone',
+        shopChanged: 'Switching to the new shop...',
+        cloudNotConfigured: 'Enable Firebase first (paste config in the code)',
+        syncOnline: '☁️ Online & synced', syncOffline: '📴 Offline (will sync later)',
+        syncLocal: '💾 Local only', syncError: '❌ Sync error',
+        writeError: 'Could not save to the cloud. Check Firestore rules and internet.',
+        migrateTitle: 'Upload your old data?',
+        migrateMsg: (n) => `The database is empty and you have ${n} items saved on this device. Upload them to the cloud?`,
+        aiTitle: 'AI Assistant', aiWelcome: '👋 Hello! I am your smart assistant.',
+        aiThinking: 'AI analyzing...', aiAnalyzeBtn: 'Analyze Data',
+        aiPriorityBtn: 'Work Priorities', aiReportBtn: 'Full Report', aiAdviceBtn: 'Smart Tips',
+        confirmYes: 'Yes, Confirm',
+        statExpired: 'Expired', statDanger: 'Near Danger', statWarning: 'Monitor', statSafe: 'Safe',
+        expiredSince: (d) => `Expired ${d}d ago`, expiresToday: 'Expires today!',
+        daysLeft: (d) => d === 1 ? '1 day left!' : `${d} days left`,
+        daysLeftShort: (d) => `${d}d left`, expiryDate: 'Expires:', qty: 'Qty:',
+        entryDate: 'Entered:',
+        dispose: 'Disposed', disposeConfirmTitle: 'Dispose quantity?',
+        disposeConfirmMsg: (name) => `Remove "${name}" from tracking?`,
+        editBtn: 'Edit',
+        editSuccess: 'Product updated successfully',
+        saveSuccess: 'Product saved successfully', removeSuccess: 'Batch removed from list',
+        clearAllConfirmTitle: 'Clear all data?', clearAllConfirmMsg: 'All products will be permanently deleted (also from the cloud for every user). Are you sure?',
+        clearAllSuccess: 'All data cleared', exportSuccess: 'Backup file downloaded successfully',
+        exportExcelSuccess: 'Excel file exported successfully',
+        exportExcelImagesSuccess: 'Excel with images exported successfully! 🖼️',
+        exportCSVSuccess: 'CSV file exported successfully',
+        exportGoogleSuccess: 'Data ready! Paste it into Google Sheets',
+        importSuccess: (n) => `Restored ${n} items successfully!`, importInvalid: 'Invalid file format',
+        importError: 'Failed to read file.', noAlerts: 'Great! No expired or near-danger items.',
+        alertMsg: (e, d) => `Alert: You have ${e} expired and ${d} near-expiry items!`,
+        storageError: 'Storage full!', readError: 'Error reading local storage',
+        searchSuccess: (code) => `Searched for barcode: ${code}`,
+        daysRemaining: (d) => `${d} days remaining`, expiredSinceShort: (d) => `⚠️ Expired ${d}d ago`,
+        expiresTodayShort: '⚠️ Expires today',
+        aiAnalysisTitle: '📊 Data Analysis', aiPriorityTitle: '🎯 Work Priorities',
+        aiReportTitle: '📋 Full Report', aiAdviceTitle: '💡 Smart Tips',
+        aiNoData: 'Not enough data for analysis.', aiHealthy: '✅ Excellent!',
+        aiTotal: 'Total Items', aiTotalQty: 'Total Quantities',
+        aiCategories: 'Categories', aiRiskRate: 'Risk Rate',
+        aiActionRequired: 'Action Required Now', aiActionSoon: 'Action Soon',
+        aiActionMonitor: 'Monitor', aiActionOk: 'Safe',
+        draftRestored: 'Draft restored',
+        copiedToClipboard: 'Copied to clipboard!',
+        exportingImages: 'Preparing Excel with images...',
+        viewImage: 'View Image',
+        summaryText: (n) => `${n} products shown`,
+        pageLabel: (a, b) => `Page ${a} of ${b}`,
+        prevPage: 'Previous', nextPage: 'Next',
+        products: 'items',
+        perPage: 'per page',
+        today: 'Today',
+        yesterday: 'Yesterday',
+        productDetails: 'Product Details',
+        productDescription: 'Description',
+        productImage: 'Product Image',
+        noImage: 'No image',
+        closeBtn: 'Close'
+    }
+};
+
+const STORAGE_KEYS = {
+    BATCHES: 'sm_expiry_batches_v1', CATALOG: 'sm_product_catalog_v1',
+    INIT: 'sm_initialized_v1', LANG: 'sm_lang', THEME: 'sm_theme',
+    FILTERS: 'sm_filters', FORM_DRAFT: 'sm_form_draft', SHOP: 'sm_shop_id'
+};
+
+const PER_PAGE = 50;
+
+let batches = [], catalog = {};
+let currentStatusFilter = 'all', currentCategoryFilter = 'all';
+let currentPage = 1;
+let currentCompressedImage = '';
+let html5QrcodeScanner = null, scannerMode = 'form';
+let currentLang = 'ar', currentTheme = 'light';
+let confirmCallback = null, toastTimeout;
+
+// ===== حالة السحابة =====
+let db = null;
+let cloudEnabled = false;
+let shopId = 'main';
+let legacyLocal = { batches: [], catalog: {} };
+let migrationChecked = false;
+let syncState = 'local';
+
+function t(key, ...args) {
+    const dict = I18N[currentLang] || I18N.ar;
+    const val = dict[key];
+    if (typeof val === 'function') return val(...args);
+    return val || key;
+}
+
+window.onload = function() {
+    loadPreferences();
+    initShopId();
+    cloudEnabled = isConfigFilled() && typeof firebase !== 'undefined';
+    if (cloudEnabled) {
+        readLegacyLocal();
+        batches = []; catalog = {};
+    } else {
+        loadData();
+    }
+    applyLanguage();
+    applyTheme();
+    restoreFilters();
+    lucide.createIcons();
+    renderBatches();
+    triggerAlertCheck(false);
+    bindFormDraft();
+    if (cloudEnabled) initCloud(); else updateSyncBadge('local');
+};
+
+// ==========================================
+// قاعدة البيانات السحابية (Firebase Firestore)
+// ==========================================
+function isConfigFilled() {
+    const c = FIREBASE_CONFIG;
+    return !!(c && c.apiKey && c.projectId && !String(c.apiKey).startsWith('PASTE') && !String(c.projectId).startsWith('PASTE'));
+}
+
+function sanitizeShop(s) {
+    return String(s || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 40);
+}
+
+function initShopId() {
+    try {
+        const fromUrl = sanitizeShop(new URLSearchParams(location.search).get('shop'));
+        if (fromUrl) localStorage.setItem(STORAGE_KEYS.SHOP, fromUrl);
+        shopId = sanitizeShop(localStorage.getItem(STORAGE_KEYS.SHOP)) || 'main';
+    } catch (e) { shopId = 'main'; }
+}
+
+function readLegacyLocal() {
+    try {
+        legacyLocal.batches = JSON.parse(localStorage.getItem(STORAGE_KEYS.BATCHES) || '[]') || [];
+        legacyLocal.catalog = JSON.parse(localStorage.getItem(STORAGE_KEYS.CATALOG) || '{}') || {};
+    } catch (e) { legacyLocal = { batches: [], catalog: {} }; }
+}
+
+function shopRef() { return db.collection('shops').doc(shopId); }
+function clean(o) { return JSON.parse(JSON.stringify(o)); }
+
+function initCloud() {
+    try {
+        firebase.initializeApp(FIREBASE_CONFIG);
+        db = firebase.firestore();
+        db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+        const base = shopRef();
+        base.collection('batches').onSnapshot(onBatchesSnapshot, onSyncError);
+        base.collection('catalog').onSnapshot(onCatalogSnapshot, onSyncError);
+        updateSyncBadge('offline');
+    } catch (e) {
+        console.error(e);
+        cloudEnabled = false;
+        loadData();
+        renderBatches();
+        updateSyncBadge('error');
+    }
+}
+
+function onBatchesSnapshot(snap) {
+    const arr = [];
+    snap.forEach(d => arr.push(d.data()));
+    arr.forEach(b => { if (!b.entryDate) b.entryDate = todayStr(); });
+    batches = arr;
+    updateSyncBadge(snap.metadata.fromCache ? 'offline' : 'online');
+    renderBatches();
+
+    if (!migrationChecked && !snap.metadata.fromCache) {
+        migrationChecked = true;
+        if (arr.length === 0 && legacyLocal.batches.length > 0) {
+            const lb = legacyLocal.batches.map(b => ({ ...b, entryDate: b.entryDate || todayStr() }));
+            openConfirmDialog(t('migrateTitle'), t('migrateMsg', lb.length), () => {
+                cloudReplaceAll(lb, legacyLocal.catalog || {});
+            });
+        }
+    }
+}
+
+function onCatalogSnapshot(snap) {
+    const obj = {};
+    snap.forEach(d => {
+        const v = d.data();
+        let code = v.barcode;
+        if (!code) { try { code = decodeURIComponent(d.id); } catch (e) { code = d.id; } }
+        obj[code] = { name: v.name, category: v.category, image: v.image, alertDays: v.alertDays };
+    });
+    catalog = obj;
+}
+
+function onSyncError(err) {
+    console.error('Sync error', err);
+    updateSyncBadge('error');
+    showToast(t('writeError'), 'error');
+}
+
+function onWriteError(err) {
+    console.error('Write error', err);
+    updateSyncBadge('error');
+    showToast(t('writeError'), 'error');
+}
+
+function cloudSetBatch(b) {
+    if (!cloudEnabled || !db) return;
+    shopRef().collection('batches').doc(b.id).set(clean(b)).catch(onWriteError);
+}
+
+function cloudDeleteBatch(id) {
+    if (!cloudEnabled || !db) return;
+    shopRef().collection('batches').doc(id).delete().catch(onWriteError);
+}
+
+function cloudSetCatalog(barcode, obj) {
+    if (!cloudEnabled || !db || !barcode) return;
+    shopRef().collection('catalog').doc(encodeURIComponent(barcode)).set(clean({ ...obj, barcode })).catch(onWriteError);
+}
+
+async function cloudReplaceAll(newBatches, newCatalog) {
+    if (!cloudEnabled || !db) return;
+    try {
+        const base = shopRef();
+        const [bs, cs] = await Promise.all([base.collection('batches').get(), base.collection('catalog').get()]);
+        const ops = [];
+        const newIds = new Set(newBatches.map(b => b.id));
+        const newCodes = new Set(Object.keys(newCatalog).filter(Boolean).map(c => encodeURIComponent(c)));
+        bs.forEach(d => { if (!newIds.has(d.id)) ops.push({ del: true, ref: d.ref }); });
+        cs.forEach(d => { if (!newCodes.has(d.id)) ops.push({ del: true, ref: d.ref }); });
+        newBatches.forEach(b => ops.push({ ref: base.collection('batches').doc(b.id), data: clean(b) }));
+        Object.entries(newCatalog).forEach(([code, v]) => {
+            if (code) ops.push({ ref: base.collection('catalog').doc(encodeURIComponent(code)), data: clean({ ...v, barcode: code }) });
+        });
+        const CHUNK = 200;
+        for (let i = 0; i < ops.length; i += CHUNK) {
+            const wb = db.batch();
+            ops.slice(i, i + CHUNK).forEach(op => { if (op.del) wb.delete(op.ref); else wb.set(op.ref, op.data); });
+            await wb.commit();
+        }
+    } catch (e) { onWriteError(e); }
+}
+
+function replaceAllData(newBatches, newCatalog) {
+    batches = newBatches;
+    catalog = newCatalog;
+    saveData();
+    cloudReplaceAll(newBatches, newCatalog);
+    renderBatches();
+}
+
+function updateSyncBadge(state) {
+    if (state) syncState = state;
+    const el = document.getElementById('syncBadge');
+    if (!el) return;
+    const map = {
+        online: ['syncOnline', 'text-emerald-400'],
+        offline: ['syncOffline', 'text-amber-300'],
+        local: ['syncLocal', 'text-slate-400'],
+        error: ['syncError', 'text-red-400']
+    };
+    const [key, cls] = map[syncState] || map.local;
+    el.textContent = t(key);
+    el.className = 'text-[10px] font-bold mt-0.5 ' + cls;
+}
+
+function applyShopCode() {
+    const code = sanitizeShop(document.getElementById('shopCodeInput').value) || 'main';
+    localStorage.setItem(STORAGE_KEYS.SHOP, code);
+    showToast(t('shopChanged'), 'success');
+    setTimeout(() => { location.href = location.pathname + '?shop=' + code; }, 600);
+}
+
+function copyShareLink() {
+    if (!cloudEnabled) { showToast(t('cloudNotConfigured'), 'warning'); return; }
+    const link = location.origin + location.pathname + '?shop=' + shopId;
+    copyToClipboard(link).then(() => showToast(t('linkCopied'), 'success')).catch(() => { prompt('Link:', link); });
+}
+
+function refreshCloudStatusText() {
+    const el = document.getElementById('cloudStatusText');
+    if (!el) return;
+    el.textContent = cloudEnabled ? t('cloudOnText', shopId) : t('cloudOffText');
+    const inp = document.getElementById('shopCodeInput');
+    if (inp) inp.value = shopId;
+}
+
+// ==========================================
+// تفضيلات ومظهر
+// ==========================================
+function loadPreferences() {
+    currentLang = localStorage.getItem(STORAGE_KEYS.LANG) || 'ar';
+    currentTheme = localStorage.getItem(STORAGE_KEYS.THEME) || 'light';
+}
+
+function applyLanguage() {
+    document.documentElement.lang = currentLang;
+    document.documentElement.dir = currentLang === 'ar' ? 'rtl' : 'ltr';
+    document.getElementById('langLabel').textContent = currentLang === 'ar' ? 'EN' : 'AR';
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.dataset.i18n;
+        if (I18N[currentLang][key] && typeof I18N[currentLang][key] === 'string') el.textContent = I18N[currentLang][key];
+    });
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+        const key = el.dataset.i18nPlaceholder;
+        if (I18N[currentLang][key]) el.placeholder = I18N[currentLang][key];
+    });
+    document.querySelectorAll('[data-i18n-title]').forEach(el => {
+        const key = el.dataset.i18nTitle;
+        if (I18N[currentLang][key]) el.title = I18N[currentLang][key];
+    });
+    document.title = currentLang === 'ar' ? 'متتبع صلاحية المنتجات' : 'Expiry Tracker';
+    updateSyncBadge();
+    refreshCloudStatusText();
+    renderBatches();
+    updateDaysPreview();
+}
+
+function toggleLanguage() {
+    currentLang = currentLang === 'ar' ? 'en' : 'ar';
+    localStorage.setItem(STORAGE_KEYS.LANG, currentLang);
+    applyLanguage();
+    showToast(currentLang === 'ar' ? 'تم التبديل إلى العربية' : 'Switched to English', 'success');
+}
+
+function applyTheme() {
+    document.body.classList.toggle('dark', currentTheme === 'dark');
+    const icon = document.getElementById('themeIcon');
+    if (icon) {
+        icon.setAttribute('data-lucide', currentTheme === 'dark' ? 'sun' : 'moon');
+        icon.classList.toggle('text-amber-400', currentTheme !== 'dark');
+        icon.classList.toggle('text-yellow-300', currentTheme === 'dark');
+    }
+    lucide.createIcons();
+}
+
+function toggleTheme() {
+    currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    localStorage.setItem(STORAGE_KEYS.THEME, currentTheme);
+    applyTheme();
+}
+
+function restoreFilters() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(STORAGE_KEYS.FILTERS) || '{}');
+        if (saved.status) currentStatusFilter = saved.status;
+        if (saved.category) currentCategoryFilter = saved.category;
+        if (saved.search) document.getElementById('searchInput').value = saved.search;
+        setStatusFilter(currentStatusFilter, false);
+        setCategoryFilter(currentCategoryFilter, false);
+    } catch (e) {}
+}
+
+function saveFilters() {
+    localStorage.setItem(STORAGE_KEYS.FILTERS, JSON.stringify({
+        status: currentStatusFilter, category: currentCategoryFilter,
+        search: document.getElementById('searchInput').value
+    }));
+}
+
+function bindFormDraft() {
+    ['inputBarcode','inputName','inputCategory','inputExpiry','inputQty','inputAlertDays','inputEntryDate'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) { el.addEventListener('input', saveFormDraft); el.addEventListener('change', saveFormDraft); }
+    });
+}
+
+function saveFormDraft() {
+    if (document.getElementById('editBatchId').value) return;
+    const draft = {};
+    ['inputBarcode','inputName','inputCategory','inputExpiry','inputQty','inputAlertDays','inputEntryDate'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) draft[id] = el.value;
+    });
+    draft.image = currentCompressedImage;
+    localStorage.setItem(STORAGE_KEYS.FORM_DRAFT, JSON.stringify(draft));
+}
+
+function restoreFormDraft() {
+    try {
+        const draft = JSON.parse(localStorage.getItem(STORAGE_KEYS.FORM_DRAFT) || '{}');
+        if (draft.inputBarcode) document.getElementById('inputBarcode').value = draft.inputBarcode;
+        if (draft.inputName) document.getElementById('inputName').value = draft.inputName;
+        if (draft.inputCategory) document.getElementById('inputCategory').value = draft.inputCategory;
+        if (draft.inputExpiry) document.getElementById('inputExpiry').value = draft.inputExpiry;
+        if (draft.inputQty) document.getElementById('inputQty').value = draft.inputQty;
+        if (draft.inputAlertDays) document.getElementById('inputAlertDays').value = draft.inputAlertDays;
+        if (draft.inputEntryDate) document.getElementById('inputEntryDate').value = draft.inputEntryDate;
+        if (draft.image) setPreviewImage(draft.image);
+        updateDaysPreview();
+        return Object.keys(draft).length > 0 && draft.inputName;
+    } catch (e) { return false; }
+}
+
+function clearFormDraft() { localStorage.removeItem(STORAGE_KEYS.FORM_DRAFT); }
+
+function todayStr() {
+    const d = new Date();
+    return d.toISOString().split('T')[0];
+}
+
+// ==========================================
+// تحميل/حفظ محلي (يُستخدم عند عدم تفعيل السحابة)
+// ==========================================
+function loadData() {
+    try {
+        const savedBatches = localStorage.getItem(STORAGE_KEYS.BATCHES);
+        const savedCatalog = localStorage.getItem(STORAGE_KEYS.CATALOG);
+        const isInitialized = localStorage.getItem(STORAGE_KEYS.INIT);
+        if (savedBatches) batches = JSON.parse(savedBatches);
+        if (savedCatalog) catalog = JSON.parse(savedCatalog);
+        batches.forEach(b => { if (!b.entryDate) b.entryDate = todayStr(); });
+        if (!isInitialized && batches.length === 0) {
+            if (EMBEDDED_DATA && Array.isArray(EMBEDDED_DATA.batches) && EMBEDDED_DATA.batches.length > 0) {
+                batches = JSON.parse(JSON.stringify(EMBEDDED_DATA.batches));
+                catalog = JSON.parse(JSON.stringify(EMBEDDED_DATA.catalog || {}));
+            } else {
+                const today = new Date();
+                const formatDate = (offsetDays) => {
+                    const d = new Date(today);
+                    d.setDate(d.getDate() + offsetDays);
+                    return d.toISOString().split('T')[0];
+                };
+                const sampleProducts = [
+                    { id: 'demo-1', barcode: '6281007041123', name: 'لبنة طازجة كاملة الدسم 400غ', category: 'dairy', expiryDate: formatDate(-2), qty: 4, alertDays: 4, image: '', entryDate: formatDate(-1) },
+                    { id: 'demo-2', barcode: '6223001360458', name: 'عصير مانجو طبيعي 1 لتر', category: 'drinks', expiryDate: formatDate(5), qty: 9, alertDays: 7, image: '', entryDate: formatDate(-1) },
+                    { id: 'demo-3', barcode: '5449000000996', name: 'فول مدمس معلب بالخلطة 450غ', category: 'canned', expiryDate: formatDate(120), qty: 24, alertDays: 15, image: '', entryDate: formatDate(0) }
+                ];
+                batches = sampleProducts;
+                sampleProducts.forEach(p => { catalog[p.barcode] = { name: p.name, category: p.category, image: p.image, alertDays: p.alertDays }; });
+            }
+            saveData();
+            localStorage.setItem(STORAGE_KEYS.INIT, 'true');
+        }
+    } catch (err) { console.error(err); showToast(t('readError'), 'error'); }
+}
+
+function loadEmbeddedData() {
+    if (!EMBEDDED_DATA || !Array.isArray(EMBEDDED_DATA.batches) || EMBEDDED_DATA.batches.length === 0) {
+        showToast(t('embeddedEmpty'), 'warning'); return;
+    }
+    openConfirmDialog(
+        currentLang === 'ar' ? 'تحميل البيانات المضمّنة؟' : 'Load embedded data?',
+        currentLang === 'ar' ? `سيتم استبدال البيانات الحالية بـ ${EMBEDDED_DATA.batches.length} صنف من الملف.` : `Replace with ${EMBEDDED_DATA.batches.length} items?`,
+        () => {
+            const nb = JSON.parse(JSON.stringify(EMBEDDED_DATA.batches));
+            const nc = JSON.parse(JSON.stringify(EMBEDDED_DATA.catalog || {}));
+            nb.forEach(b => { if (!b.entryDate) b.entryDate = todayStr(); });
+            localStorage.setItem(STORAGE_KEYS.INIT, 'true');
+            replaceAllData(nb, nc);
+            closeBackupModal();
+            showToast(t('embeddedLoaded', nb.length), 'success');
+        }
+    );
+}
+
+// في وضع السحابة لا نحتاج حفظ محلي (Firestore يحتفظ بنسخة للعمل بلا إنترنت)
+function saveData() {
+    if (cloudEnabled) return;
+    try {
+        localStorage.setItem(STORAGE_KEYS.BATCHES, JSON.stringify(batches));
+        localStorage.setItem(STORAGE_KEYS.CATALOG, JSON.stringify(catalog));
+    } catch (err) { showToast(t('storageError'), 'error'); }
+}
+
+function getDaysRemaining(expiryDateStr) {
+    const today = new Date(); today.setHours(0,0,0,0);
+    const exp = new Date(expiryDateStr); exp.setHours(0,0,0,0);
+    return Math.ceil((exp - today) / (1000*60*60*24));
+}
+
+function getBatchStatus(batch) {
+    const days = getDaysRemaining(batch.expiryDate);
+    const alertThreshold = parseInt(batch.alertDays) || 7;
+    if (days < 0) return { key: 'expired', label: t('expiredSince', Math.abs(days)), badgeBg: 'bg-red-600 text-white', cardBorder: 'border-red-500 border-2 expired-pulse', cardBg: 'bg-red-50/40', days };
+    if (days === 0) return { key: 'expired', label: t('expiresToday'), badgeBg: 'bg-red-600 text-white', cardBorder: 'border-red-500 border-2 expired-pulse', cardBg: 'bg-red-50/40', days };
+    if (days <= alertThreshold) return { key: 'danger', label: t('daysLeft', days), badgeBg: 'bg-orange-500 text-white', cardBorder: 'border-orange-400 border-2', cardBg: 'bg-orange-50/30', days };
+    if (days <= 30) return { key: 'warning', label: t('daysLeftShort', days), badgeBg: 'bg-amber-400 text-slate-900', cardBorder: 'border-amber-300', cardBg: 'bg-white', days };
+    return { key: 'safe', label: t('daysLeftShort', days), badgeBg: 'bg-emerald-100 text-emerald-800', cardBorder: 'border-slate-200', cardBg: 'bg-white', days };
+}
+
+const CATEGORY_LABELS = {
+    dairy: { ar: 'ألبان وأجبان', en: 'Dairy & Cheese', emoji: '🥛' },
+    canned: { ar: 'معلبات', en: 'Canned', emoji: '🥫' },
+    drinks: { ar: 'مشروبات', en: 'Drinks', emoji: '🧃' },
+    sweets: { ar: 'حلويات', en: 'Sweets', emoji: '🍫' },
+    frozen: { ar: 'مجمدات', en: 'Frozen', emoji: '❄️' },
+    other: { ar: 'أخرى', en: 'Other', emoji: '📦' }
+};
+
+function getCategoryLabel(catKey) {
+    const c = CATEGORY_LABELS[catKey];
+    return c ? `${c.emoji} ${c[currentLang]}` : catKey;
+}
+
+function formatEntryDate(dateStr) {
+    if (!dateStr) return '';
+    try {
+        const d = new Date(dateStr + 'T00:00:00');
+        const opts = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' };
+        return d.toLocaleDateString(currentLang === 'ar' ? 'ar-EG' : 'en-US', opts);
+    } catch (e) { return dateStr; }
+}
+
+function getRelativeDateLabel(dateStr) {
+    const today = todayStr();
+    if (dateStr === today) return t('today');
+    const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
+    if (dateStr === yesterday.toISOString().split('T')[0]) return t('yesterday');
+    return '';
+}
+
+function groupByEntryDate(items) {
+    const groups = {};
+    items.forEach(item => {
+        const key = item.entryDate || 'unknown';
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(item);
+    });
+    return Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0]));
+}
+
+function renderBatches() {
+    const listEl = document.getElementById('batchesList');
+    const emptyEl = document.getElementById('emptyState');
+    const paginationEl = document.getElementById('paginationControls');
+    const summaryEl = document.getElementById('summaryBar');
+    const searchQuery = document.getElementById('searchInput').value.trim().toLowerCase();
+    document.getElementById('clearSearchBtn').classList.toggle('hidden', searchQuery.length === 0);
+
+    let counts = { expired: 0, danger: 0, warning: 0, safe: 0 };
+    const enriched = batches.map(b => {
+        const status = getBatchStatus(b);
+        counts[status.key]++;
+        return { ...b, status };
+    }).sort((a, b) => a.status.days - b.status.days);
+
+    document.getElementById('count-expired').textContent = counts.expired;
+    document.getElementById('count-danger').textContent = counts.danger;
+    document.getElementById('count-warning').textContent = counts.warning;
+    document.getElementById('count-safe').textContent = counts.safe;
+
+    const urgent = counts.expired + counts.danger;
+    const badge = document.getElementById('alertBadge');
+    if (urgent > 0) { badge.textContent = urgent; badge.classList.remove('hidden'); }
+    else badge.classList.add('hidden');
+
+    const filtered = enriched.filter(item => {
+        const matchStatus = currentStatusFilter === 'all' || item.status.key === currentStatusFilter;
+        const matchCat = currentCategoryFilter === 'all' || item.category === currentCategoryFilter;
+        const matchSearch = !searchQuery || item.name.toLowerCase().includes(searchQuery) || (item.barcode && item.barcode.toLowerCase().includes(searchQuery));
+        return matchStatus && matchCat && matchSearch;
+    });
+
+    if (filtered.length === 0) {
+        listEl.innerHTML = '';
+        emptyEl.classList.remove('hidden');
+        paginationEl.classList.add('hidden');
+        summaryEl.classList.add('hidden');
+        return;
+    }
+    emptyEl.classList.add('hidden');
+    summaryEl.classList.remove('hidden');
+
+    document.getElementById('summaryText').textContent = t('summaryText', filtered.length);
+    document.getElementById('summaryTotal').textContent = `${filtered.reduce((s, i) => s + i.qty, 0)} ${t('products')}`;
+
+    const totalPages = Math.ceil(filtered.length / PER_PAGE);
+    if (currentPage > totalPages) currentPage = totalPages;
+    if (currentPage < 1) currentPage = 1;
+    const start = (currentPage - 1) * PER_PAGE;
+    const pageItems = filtered.slice(start, start + PER_PAGE);
+
+    const groups = groupByEntryDate(pageItems);
+
+    let html = '';
+    groups.forEach(([entryDate, items]) => {
+        const dateLabel = formatEntryDate(entryDate);
+        const relativeLabel = getRelativeDateLabel(entryDate);
+        const badgeLabel = relativeLabel ? `${relativeLabel} · ${dateLabel}` : dateLabel;
+        const totalQty = items.reduce((s, i) => s + i.qty, 0);
+        html += `
+            <div class="date-divider rounded-2xl px-3.5 py-2.5 flex items-center justify-between gap-2 mt-2">
+                <div class="flex items-center gap-2 min-w-0">
+                    <i data-lucide="calendar-days" class="w-4 h-4 text-emerald-700 shrink-0"></i>
+                    <span class="text-xs sm:text-sm font-extrabold text-emerald-900 truncate">${badgeLabel}</span>
+                </div>
+                <span class="bg-emerald-600 text-white text-[11px] font-extrabold px-2.5 py-1 rounded-lg whitespace-nowrap">
+                    ${items.length} ${t('products')} · ${t('qty')} ${totalQty}
+                </span>
+            </div>
+        `;
+        html += items.map(item => renderBatchCard(item)).join('');
+    });
+
+    listEl.innerHTML = html;
+    renderPagination(totalPages, filtered.length);
+    lucide.createIcons();
+}
+
+function renderBatchCard(item) {
+    const imgHtml = item.image
+        ? `<img src="${item.image}" alt="${escapeHtml(item.name)}" onclick="event.stopPropagation(); openImageViewer('${item.id}')" class="product-thumb w-16 h-16 rounded-2xl object-cover border border-slate-200 shrink-0 bg-slate-100">`
+        : `<div class="w-16 h-16 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 text-slate-400"><i data-lucide="package" class="w-7 h-7"></i></div>`;
+    const barcodeHtml = item.barcode ? `<span class="text-[11px] font-mono bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md">${escapeHtml(item.barcode)}</span>` : '';
+    const entryHtml = item.entryDate
+        ? `<span class="flex items-center gap-1 text-[11px] font-bold text-sky-700 bg-sky-50 border border-sky-200 px-2 py-0.5 rounded-md">
+              <i data-lucide="calendar-plus" class="w-3 h-3"></i>
+              ${t('entryDate')} ${item.entryDate}
+           </span>`
+        : '';
+    return `
+    <div class="${item.status.cardBg} ${item.status.cardBorder} border rounded-3xl p-3.5 shadow-xs transition">
+        <div class="flex gap-3">
+            ${imgHtml}
+            <div class="flex-1 min-w-0">
+                <div class="flex items-start justify-between gap-2">
+                    <h3 onclick="openProductDetail('${item.id}')" class="product-name-clickable product-name-full font-extrabold text-slate-900 text-sm sm:text-base leading-snug">${escapeHtml(item.name)}</h3>
+                    <span class="${item.status.badgeBg} text-[11px] font-extrabold px-2.5 py-1 rounded-xl whitespace-nowrap shrink-0">${item.status.label}</span>
+                </div>
+                <div class="flex flex-wrap items-center gap-1.5 mt-1.5">
+                    <span class="text-[11px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md">${getCategoryLabel(item.category)}</span>
+                    ${barcodeHtml}
+                    ${entryHtml}
+                </div>
+                <div class="mt-2 flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                    <i data-lucide="calendar" class="w-3.5 h-3.5 text-slate-400"></i>
+                    <span>${t('expiryDate')} <span dir="ltr" class="font-extrabold">${item.expiryDate}</span></span>
+                </div>
+            </div>
+        </div>
+        <div class="mt-3 pt-2.5 border-t border-slate-200/80 flex items-center justify-between gap-2 flex-wrap">
+            <div class="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
+                <button onclick="updateBatchQty('${item.id}', -1)" class="w-8 h-8 rounded-lg bg-white shadow-xs font-extrabold text-slate-700 hover:bg-slate-200 active:scale-90 transition flex items-center justify-center">-</button>
+                <span class="px-2.5 text-xs font-extrabold text-slate-800">${t('qty')} ${item.qty}</span>
+                <button onclick="updateBatchQty('${item.id}', 1)" class="w-8 h-8 rounded-lg bg-white shadow-xs font-extrabold text-slate-700 hover:bg-slate-200 active:scale-90 transition flex items-center justify-center">+</button>
+            </div>
+            <div class="flex items-center gap-1.5">
+                <button onclick="openEditModal('${item.id}')" class="edit-btn bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 active:scale-95 transition">
+                    <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
+                    <span>${t('editBtn')}</span>
+                </button>
+                <button onclick="disposeBatch('${item.id}')" class="bg-slate-900 hover:bg-emerald-600 text-white text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 active:scale-95 transition">
+                    <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-400"></i>
+                    <span>${t('dispose')}</span>
+                </button>
+            </div>
+        </div>
+    </div>`;
+}
+
+function escapeHtml(str) {
+    return String(str || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// ==========================================
+// نافذة تفاصيل المنتج
+// ==========================================
+function openProductDetail(batchId) {
+    const item = batches.find(b => b.id === batchId);
+    if (!item) return;
+    const st = getBatchStatus(item);
+    const imgBlock = item.image
+        ? `<img src="${item.image}" alt="${escapeHtml(item.name)}" onclick="openImageViewer('${item.id}')" class="product-thumb w-full h-56 object-contain rounded-2xl border border-slate-200 bg-slate-50">`
+        : `<div class="w-full h-40 rounded-2xl bg-slate-100 border border-slate-200 flex flex-col items-center justify-center text-slate-400 gap-2">
+              <i data-lucide="image-off" class="w-10 h-10"></i>
+              <span class="text-xs font-bold">${t('noImage')}</span>
+           </div>`;
+    const content = `
+        <div class="space-y-3">
+            <div class="flex items-center justify-between gap-2">
+                <span class="${st.badgeBg} text-[11px] font-extrabold px-3 py-1.5 rounded-xl">${st.label}</span>
+                <span class="text-[11px] font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg">${getCategoryLabel(item.category)}</span>
+            </div>
+            ${imgBlock}
+            <div class="bg-emerald-50 border border-emerald-200 rounded-2xl p-3.5">
+                <div class="text-[11px] font-bold text-emerald-700 mb-1 flex items-center gap-1">
+                    <i data-lucide="tag" class="w-3.5 h-3.5"></i>
+                    ${t('nameLabel').replace(' *','')}
+                </div>
+                <div class="text-base font-extrabold text-slate-900 break-words leading-relaxed">${escapeHtml(item.name)}</div>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+                <div class="bg-slate-50 border border-slate-200 rounded-xl p-2.5">
+                    <div class="text-[10px] font-bold text-slate-500 mb-0.5">${t('barcodeLabel').replace(' (اختياري أو بالمسح)','').replace(' (optional or scan)','')}</div>
+                    <div class="text-xs font-extrabold text-slate-800 font-mono break-all">${item.barcode ? escapeHtml(item.barcode) : '—'}</div>
+                </div>
+                <div class="bg-slate-50 border border-slate-200 rounded-xl p-2.5">
+                    <div class="text-[10px] font-bold text-slate-500 mb-0.5">${t('qtyLabel')}</div>
+                    <div class="text-xs font-extrabold text-slate-800">${item.qty}</div>
+                </div>
+                <div class="bg-amber-50 border border-amber-200 rounded-xl p-2.5">
+                    <div class="text-[10px] font-bold text-amber-700 mb-0.5">${t('expiryLabel').replace(' *','')}</div>
+                    <div class="text-xs font-extrabold text-amber-900" dir="ltr">${item.expiryDate}</div>
+                </div>
+                <div class="bg-sky-50 border border-sky-200 rounded-xl p-2.5">
+                    <div class="text-[10px] font-bold text-sky-700 mb-0.5">${t('entryDateLabel')}</div>
+                    <div class="text-xs font-extrabold text-sky-900" dir="ltr">${item.entryDate || '—'}</div>
+                </div>
+            </div>
+            <div class="flex gap-2 pt-1">
+                <button onclick="closeProductDetail(); openEditModal('${item.id}')" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5 active:scale-95 transition">
+                    <i data-lucide="pencil" class="w-4 h-4"></i>
+                    ${t('editBtn')}
+                </button>
+                <button onclick="closeProductDetail()" class="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold py-2.5 rounded-xl text-xs active:scale-95 transition">${t('closeBtn')}</button>
+            </div>
+        </div>
+    `;
+    document.getElementById('productDetailContent').innerHTML = content;
+    document.getElementById('productDetailModal').classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+    lucide.createIcons();
+}
+
+function closeProductDetail() {
+    document.getElementById('productDetailModal').classList.add('hidden');
+    document.body.style.overflow = '';
+}
+
+function renderPagination(totalPages, totalItems) {
+    const paginationEl = document.getElementById('paginationControls');
+    if (totalPages <= 1) {
+        paginationEl.classList.add('hidden');
+        paginationEl.innerHTML = '';
+        return;
+    }
+    paginationEl.classList.remove('hidden');
+
+    let html = `<button onclick="goToPage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}
+        class="px-3 py-2 rounded-xl text-xs font-bold bg-white border border-slate-200 text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 active:scale-95 transition flex items-center gap-1">
+        <i data-lucide="${currentLang === 'ar' ? 'chevron-right' : 'chevron-left'}" class="w-4 h-4"></i>
+        ${t('prevPage')}
+    </button>`;
+
+    const maxVisible = 5;
+    let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+    let endPage = Math.min(totalPages, startPage + maxVisible - 1);
+    if (endPage - startPage < maxVisible - 1) startPage = Math.max(1, endPage - maxVisible + 1);
+
+    if (startPage > 1) {
+        html += pageButton(1);
+        if (startPage > 2) html += `<span class="px-1 text-slate-400 text-xs">...</span>`;
+    }
+    for (let p = startPage; p <= endPage; p++) html += pageButton(p);
+    if (endPage < totalPages) {
+        if (endPage < totalPages - 1) html += `<span class="px-1 text-slate-400 text-xs">...</span>`;
+        html += pageButton(totalPages);
+    }
+
+    html += `<button onclick="goToPage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''}
+        class="px-3 py-2 rounded-xl text-xs font-bold bg-white border border-slate-200 text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 active:scale-95 transition flex items-center gap-1">
+        ${t('nextPage')}
+        <i data-lucide="${currentLang === 'ar' ? 'chevron-left' : 'chevron-right'}" class="w-4 h-4"></i>
+    </button>`;
+
+    paginationEl.innerHTML = html;
+    lucide.createIcons();
+}
+
+function pageButton(p) {
+    if (p === currentPage) {
+        return `<button class="w-9 h-9 rounded-xl text-xs font-extrabold bg-slate-900 text-white">${p}</button>`;
+    }
+    return `<button onclick="goToPage(${p})" class="w-9 h-9 rounded-xl text-xs font-bold bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 active:scale-95 transition">${p}</button>`;
+}
+
+function goToPage(p) {
+    currentPage = p;
+    renderBatches();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function openImageViewer(batchId) {
+    const item = batches.find(b => b.id === batchId);
+    if (!item || !item.image) return;
+    document.getElementById('viewerImage').src = item.image;
+    document.getElementById('imageViewer').classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeImageViewer() {
+    document.getElementById('imageViewer').classList.add('hidden');
+    document.body.style.overflow = '';
+}
+
+function openEditModal(batchId) {
+    const item = batches.find(b => b.id === batchId);
+    if (!item) return;
+    document.getElementById('editBatchId').value = item.id;
+    document.getElementById('inputBarcode').value = item.barcode || '';
+    document.getElementById('inputName').value = item.name;
+    document.getElementById('inputCategory').value = item.category;
+    document.getElementById('inputExpiry').value = item.expiryDate;
+    document.getElementById('inputQty').value = item.qty;
+    document.getElementById('inputAlertDays').value = item.alertDays;
+    document.getElementById('inputEntryDate').value = item.entryDate || todayStr();
+    if (item.image) setPreviewImage(item.image);
+    else clearImage();
+    document.getElementById('autoFillBanner').classList.add('hidden');
+    document.getElementById('modalTitle').textContent = t('editModalTitle');
+    document.getElementById('saveBtnText').textContent = t('updateBtn');
+    document.getElementById('daysPreviewText').textContent = '';
+    updateDaysPreview();
+    document.getElementById('addModal').classList.remove('hidden');
+    lucide.createIcons();
+}
+
+function onSearchInput() { currentPage = 1; saveFilters(); renderBatches(); }
+
+function setStatusFilter(status, rerender = true) {
+    currentStatusFilter = status;
+    currentPage = 1;
+    document.querySelectorAll('.status-pill').forEach(btn => {
+        if (btn.dataset.status === status) {
+            btn.classList.add('bg-slate-900', 'text-white');
+            btn.classList.remove('bg-white', 'text-red-600', 'text-orange-600', 'text-amber-600', 'text-emerald-600');
+        } else {
+            btn.classList.remove('bg-slate-900', 'text-white');
+            btn.classList.add('bg-white');
+            if (btn.dataset.status === 'expired') btn.classList.add('text-red-600');
+            if (btn.dataset.status === 'danger') btn.classList.add('text-orange-600');
+            if (btn.dataset.status === 'warning') btn.classList.add('text-amber-600');
+            if (btn.dataset.status === 'safe') btn.classList.add('text-emerald-600');
+        }
+    });
+    saveFilters();
+    if (rerender) renderBatches();
+}
+
+function setCategoryFilter(cat, rerender = true) {
+    currentCategoryFilter = cat;
+    currentPage = 1;
+    document.querySelectorAll('.cat-pill').forEach(btn => {
+        if (btn.dataset.cat === cat) btn.className = 'cat-pill px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap bg-slate-800 text-white';
+        else btn.className = 'cat-pill px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap bg-white text-slate-600 border border-slate-200';
+    });
+    saveFilters();
+    if (rerender) renderBatches();
+}
+
+function clearSearch() {
+    document.getElementById('searchInput').value = '';
+    currentPage = 1;
+    saveFilters();
+    renderBatches();
+}
+
+function startScanner(mode) {
+    scannerMode = mode;
+    const modal = document.getElementById('scannerModal');
+    const errorEl = document.getElementById('scannerError');
+    errorEl.classList.add('hidden');
+    modal.classList.remove('hidden');
+    document.getElementById('scannerTitle').textContent = mode === 'search' ? t('scannerSearchTitle') : t('scannerAddTitle');
+    lucide.createIcons();
+
+    try {
+        html5QrcodeScanner = new Html5Qrcode("reader");
+        const config = {
+            fps: 15,
+            qrbox: function(w, h) { const m = Math.min(w, h); const s = Math.floor(m * 0.75); return { width: s, height: s }; },
+            aspectRatio: 1.0, disableFlip: false,
+            experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+            formatsToSupport: [
+                Html5QrcodeSupportedFormats.QR_CODE, Html5QrcodeSupportedFormats.EAN_13,
+                Html5QrcodeSupportedFormats.EAN_8, Html5QrcodeSupportedFormats.CODE_128,
+                Html5QrcodeSupportedFormats.CODE_39, Html5QrcodeSupportedFormats.UPC_A,
+                Html5QrcodeSupportedFormats.UPC_E, Html5QrcodeSupportedFormats.ITF,
+                Html5QrcodeSupportedFormats.CODABAR, Html5QrcodeSupportedFormats.DATA_MATRIX
+            ]
+        };
+        html5QrcodeScanner.start({ facingMode: "environment" }, config,
+            (decodedText) => {
+                playBeep(); stopScanner();
+                if (scannerMode === 'search') {
+                    const searchInput = document.getElementById('searchInput');
+                    searchInput.value = decodedText; currentPage = 1; saveFilters(); renderBatches();
+                    const resultsCount = batches.filter(b => b.name.toLowerCase().includes(decodedText.toLowerCase()) || (b.barcode && b.barcode.toLowerCase().includes(decodedText.toLowerCase()))).length;
+                    if (resultsCount > 0) showToast(`✅ ${currentLang === 'ar' ? 'تم العثور على' : 'Found'} ${resultsCount} ${currentLang === 'ar' ? 'صنف' : 'items'}`, 'success');
+                    else showToast(`⚠️ ${currentLang === 'ar' ? 'لا توجد نتائج للباركود:' : 'No results for:'} ${decodedText}`, 'warning');
+                } else {
+                    document.getElementById('inputBarcode').value = decodedText;
+                    handleBarcodeLookup(decodedText);
+                    saveFormDraft();
+                    if (catalog[decodedText]) showToast(currentLang === 'ar' ? '✅ تم التعرف على المنتج!' : '✅ Product recognized!', 'success');
+                    else showToast(currentLang === 'ar' ? '⚠️ منتج جديد، أدخل البيانات' : '⚠️ New product, enter details', 'warning');
+                }
+            },
+            (errorMessage) => {}
+        ).catch((err) => { console.error(err); errorEl.textContent = t('cameraError'); errorEl.classList.remove('hidden'); });
+    } catch (e) { console.error(e); errorEl.textContent = t('cameraNotSupported'); errorEl.classList.remove('hidden'); }
+}
+
+function stopScanner() {
+    document.getElementById('scannerModal').classList.add('hidden');
+    if (html5QrcodeScanner) {
+        html5QrcodeScanner.stop().then(() => { html5QrcodeScanner.clear(); html5QrcodeScanner = null; }).catch(() => { html5QrcodeScanner = null; });
+    }
+}
+
+function handleBarcodeLookup(barcode) {
+    const cleanCode = barcode.trim();
+    const banner = document.getElementById('autoFillBanner');
+    if (document.getElementById('editBatchId').value) return;
+    if (cleanCode && catalog[cleanCode]) {
+        const saved = catalog[cleanCode];
+        document.getElementById('inputName').value = saved.name || '';
+        document.getElementById('inputCategory').value = saved.category || 'other';
+        document.getElementById('inputAlertDays').value = saved.alertDays || 7;
+        if (saved.image) setPreviewImage(saved.image); else clearImage();
+        banner.classList.remove('hidden');
+        document.getElementById('inputExpiry').focus();
+    } else banner.classList.add('hidden');
+}
+
+function processImage(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const img = new Image();
+        img.onload = function() {
+            const canvas = document.createElement('canvas');
+            const SIZE = 120;
+            canvas.width = SIZE; canvas.height = SIZE;
+            const ctx = canvas.getContext('2d');
+            const minSide = Math.min(img.width, img.height);
+            const sx = (img.width - minSide) / 2;
+            const sy = (img.height - minSide) / 2;
+            ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, SIZE, SIZE);
+            setPreviewImage(canvas.toDataURL('image/jpeg', 0.72));
+            saveFormDraft();
+        };
+        img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+}
+
+function setPreviewImage(dataUrl) {
+    currentCompressedImage = dataUrl;
+    document.getElementById('imagePreview').src = dataUrl;
+    document.getElementById('imagePreview').classList.remove('hidden');
+    document.getElementById('imagePlaceholder').classList.add('hidden');
+    document.getElementById('removeImgBtn').classList.remove('hidden');
+}
+
+function clearImage() {
+    currentCompressedImage = '';
+    document.getElementById('inputImage').value = '';
+    document.getElementById('imagePreview').classList.add('hidden');
+    document.getElementById('imagePlaceholder').classList.remove('hidden');
+    document.getElementById('removeImgBtn').classList.add('hidden');
+}
+
+function openAddModal() {
+    document.getElementById('productForm').reset();
+    document.getElementById('editBatchId').value = '';
+    document.getElementById('autoFillBanner').classList.add('hidden');
+    document.getElementById('daysPreviewText').textContent = '';
+    document.getElementById('modalTitle').textContent = t('addModalTitle');
+    document.getElementById('saveBtnText').textContent = t('saveBtn');
+    document.getElementById('inputEntryDate').value = todayStr();
+    clearImage();
+    const hasDraft = restoreFormDraft();
+    if (!document.getElementById('inputEntryDate').value) {
+        document.getElementById('inputEntryDate').value = todayStr();
+    }
+    document.getElementById('addModal').classList.remove('hidden');
+    lucide.createIcons();
+    if (hasDraft) showToast(t('draftRestored'), 'success');
+}
+
+function closeAddModal() {
+    document.getElementById('addModal').classList.add('hidden');
+    document.getElementById('editBatchId').value = '';
+}
+
+function suggestAlertDays() {
+    if (document.getElementById('editBatchId').value) return;
+    const cat = document.getElementById('inputCategory').value;
+    const input = document.getElementById('inputAlertDays');
+    if (cat === 'dairy') input.value = 3;
+    else if (cat === 'canned') input.value = 15;
+    else if (cat === 'frozen') input.value = 10;
+    else input.value = 7;
+}
+
+function adjustFormQty(delta) {
+    const input = document.getElementById('inputQty');
+    input.value = Math.max(1, (parseInt(input.value) || 1) + delta);
+    saveFormDraft();
+}
+
+function updateDaysPreview() {
+    const val = document.getElementById('inputExpiry').value;
+    const label = document.getElementById('daysPreviewText');
+    if (!val) { label.textContent = ''; return; }
+    const days = getDaysRemaining(val);
+    if (days < 0) { label.textContent = t('expiredSinceShort', Math.abs(days)); label.className = 'text-xs font-extrabold text-red-600'; }
+    else if (days === 0) { label.textContent = t('expiresTodayShort'); label.className = 'text-xs font-extrabold text-red-600'; }
+    else { label.textContent = t('daysRemaining', days); label.className = 'text-xs font-extrabold text-emerald-700'; }
+}
+
+function saveBatch(e) {
+    e.preventDefault();
+    const editId = document.getElementById('editBatchId').value;
+    const barcode = document.getElementById('inputBarcode').value.trim();
+    const name = document.getElementById('inputName').value.trim();
+    const category = document.getElementById('inputCategory').value;
+    const expiryDate = document.getElementById('inputExpiry').value;
+    const qty = parseInt(document.getElementById('inputQty').value) || 1;
+    const alertDays = parseInt(document.getElementById('inputAlertDays').value) || 7;
+    const entryDate = document.getElementById('inputEntryDate').value || todayStr();
+    if (!name || !expiryDate) return;
+
+    if (editId) {
+        const idx = batches.findIndex(b => b.id === editId);
+        if (idx !== -1) {
+            batches[idx] = { ...batches[idx], barcode, name, category, expiryDate, qty, alertDays, entryDate, image: currentCompressedImage };
+            if (barcode) {
+                catalog[barcode] = { name, category, image: currentCompressedImage, alertDays };
+                cloudSetCatalog(barcode, catalog[barcode]);
+            }
+            cloudSetBatch(batches[idx]);
+            saveData(); closeAddModal(); renderBatches();
+            showToast(t('editSuccess'), 'success');
+        }
+    } else {
+        const newBatch = { id: 'batch-' + Date.now() + '-' + Math.floor(Math.random() * 1000), barcode, name, category, expiryDate, qty, alertDays, entryDate, image: currentCompressedImage };
+        batches.push(newBatch);
+        if (barcode) {
+            catalog[barcode] = { name, category, image: currentCompressedImage, alertDays };
+            cloudSetCatalog(barcode, catalog[barcode]);
+        }
+        cloudSetBatch(newBatch);
+        saveData(); clearFormDraft(); closeAddModal(); renderBatches();
+        showToast(t('saveSuccess'), 'success');
+    }
+}
+
+function updateBatchQty(id, delta) {
+    const idx = batches.findIndex(b => b.id === id);
+    if (idx === -1) return;
+    const newQty = batches[idx].qty + delta;
+    if (newQty <= 0) disposeBatch(id);
+    else {
+        batches[idx].qty = newQty;
+        cloudSetBatch(batches[idx]);
+        saveData(); renderBatches();
+    }
+}
+
+function disposeBatch(id) {
+    const item = batches.find(b => b.id === id);
+    if (!item) return;
+    openConfirmDialog(t('disposeConfirmTitle'), t('disposeConfirmMsg', item.name), () => {
+        batches = batches.filter(b => b.id !== id);
+        cloudDeleteBatch(id);
+        saveData(); renderBatches();
+        showToast(t('removeSuccess'), 'success');
+    });
+}
+
+function playBeep() {
+    try { if (typeof Tone !== 'undefined') { const synth = new Tone.Synth().toDestination(); synth.triggerAttackRelease("C6", "16n"); } } catch (e) {}
+}
+
+function triggerAlertCheck(manualClick = false) {
+    let expiredCount = 0, dangerCount = 0;
+    batches.forEach(b => {
+        const st = getBatchStatus(b);
+        if (st.key === 'expired') expiredCount++;
+        else if (st.key === 'danger') dangerCount++;
+    });
+    if (manualClick) {
+        if (expiredCount === 0 && dangerCount === 0) { showToast(t('noAlerts'), 'success'); return; }
+        try {
+            Tone.start();
+            const synth = new Tone.Synth().toDestination();
+            const now = Tone.now();
+            synth.triggerAttackRelease("A5", "8n", now);
+            synth.triggerAttackRelease("E5", "8n", now + 0.18);
+        } catch (e) {}
+        const msg = t('alertMsg', expiredCount, dangerCount);
+        showToast(msg, 'warning');
+        if ("Notification" in window) {
+            if (Notification.permission === "granted") new Notification(t('appTitle'), { body: msg });
+            else if (Notification.permission !== "denied") Notification.requestPermission().then(p => { if (p === "granted") new Notification(t('appTitle'), { body: msg }); });
+        }
+    }
+}
+
+function openBackupModal() {
+    refreshCloudStatusText();
+    document.getElementById('backupModal').classList.remove('hidden');
+    lucide.createIcons();
+}
+function closeBackupModal() { document.getElementById('backupModal').classList.add('hidden'); }
+
+function prepareExportData() {
+    return batches.map(b => {
+        const st = getBatchStatus(b);
+        return {
+            [currentLang === 'ar' ? 'الباركود' : 'Barcode']: b.barcode || '',
+            [currentLang === 'ar' ? 'اسم الصنف' : 'Product Name']: b.name,
+            [currentLang === 'ar' ? 'القسم' : 'Category']: getCategoryLabel(b.category),
+            [currentLang === 'ar' ? 'تاريخ الدخول' : 'Entry Date']: b.entryDate || '',
+            [currentLang === 'ar' ? 'تاريخ الانتهاء' : 'Expiry Date']: b.expiryDate,
+            [currentLang === 'ar' ? 'الكمية' : 'Quantity']: b.qty,
+            [currentLang === 'ar' ? 'أيام التنبيه' : 'Alert Days']: b.alertDays,
+            [currentLang === 'ar' ? 'الحالة' : 'Status']: st.label,
+            [currentLang === 'ar' ? 'الأيام المتبقية' : 'Days Remaining']: st.days
+        };
+    });
+}
+
+// ==========================================
+// تصدير Excel مع الصور
+// ==========================================
+function exportExcelWithImages() {
+    try {
+        if (batches.length === 0) { showToast(currentLang === 'ar' ? 'لا توجد بيانات للتصدير' : 'No data to export', 'warning'); return; }
+        showToast(t('exportingImages'), 'warning');
+
+        const headers = currentLang === 'ar'
+            ? ['الصورة', 'الباركود', 'اسم الصنف', 'القسم', 'تاريخ الدخول', 'تاريخ الانتهاء', 'الكمية', 'أيام التنبيه', 'الحالة', 'الأيام المتبقية']
+            : ['Image', 'Barcode', 'Product Name', 'Category', 'Entry Date', 'Expiry Date', 'Quantity', 'Alert Days', 'Status', 'Days Remaining'];
+        const rows = batches.map(b => {
+            const st = getBatchStatus(b);
+            return {
+                image: b.image || '', barcode: b.barcode || '', name: b.name,
+                category: getCategoryLabel(b.category), entryDate: b.entryDate || '',
+                expiryDate: b.expiryDate, qty: b.qty, alertDays: b.alertDays,
+                status: st.label, days: st.days
+            };
+        });
+
+        const zip = new JSZip();
+
+        zip.file('[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Default Extension="jpeg" ContentType="image/jpeg"/>
+<Default Extension="jpg" ContentType="image/jpeg"/>
+<Default Extension="png" ContentType="image/png"/>
+<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>
+<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>
+</Types>`);
+
+        zip.file('_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`);
+
+        zip.file('xl/workbook.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<sheets><sheet name="Products" sheetId="1" r:id="rId1"/></sheets>
+</workbook>`);
+
+        zip.file('xl/_rels/workbook.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>
+</Relationships>`);
+
+        zip.file('xl/styles.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<fonts count="3">
+<font><sz val="11"/><name val="Cairo"/></font>
+<font><b/><sz val="12"/><name val="Cairo"/></font>
+<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Cairo"/></font>
+</fonts>
+<fills count="3">
+<fill><patternFill patternType="none"/></fill>
+<fill><patternFill patternType="gray125"/></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FF059669"/></patternFill></fill>
+</fills>
+<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+<cellXfs count="2">
+<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+<xf numFmtId="0" fontId="2" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+</cellXfs>
+</styleSheet>`);
+
+        const allStrings = [];
+        const stringIndex = {};
+        function addString(s) {
+            s = String(s || '');
+            if (!(s in stringIndex)) { stringIndex[s] = allStrings.length; allStrings.push(s); }
+            return stringIndex[s];
+        }
+        headers.forEach(h => addString(h));
+        rows.forEach(r => {
+            addString(r.barcode); addString(r.name); addString(r.category);
+            addString(r.entryDate); addString(r.expiryDate); addString(r.status);
+        });
+
+        zip.file('xl/sharedStrings.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${allStrings.length}" uniqueCount="${allStrings.length}">
+${allStrings.map(s => `<si><t xml:space="preserve">${escapeXml(s)}</t></si>`).join('')}
+</sst>`);
+
+        const rowHeight = 90;
+        let sheetData = '<sheetData>';
+        sheetData += `<row r="1" ht="30" customHeight="1">`;
+        headers.forEach((h, colIdx) => {
+            const cellRef = getCellRef(colIdx, 1);
+            sheetData += `<c r="${cellRef}" t="s" s="1"><v>${stringIndex[h]}</v></c>`;
+        });
+        sheetData += `</row>`;
+
+        rows.forEach((row, rowIdx) => {
+            const r = rowIdx + 2;
+            sheetData += `<row r="${r}" ht="${rowHeight}" customHeight="1">`;
+            sheetData += `<c r="A${r}" t="inlineStr"><is><t></t></is></c>`;
+            sheetData += `<c r="B${r}" t="s"><v>${stringIndex[row.barcode]}</v></c>`;
+            sheetData += `<c r="C${r}" t="s"><v>${stringIndex[row.name]}</v></c>`;
+            sheetData += `<c r="D${r}" t="s"><v>${stringIndex[row.category]}</v></c>`;
+            sheetData += `<c r="E${r}" t="s"><v>${stringIndex[row.entryDate]}</v></c>`;
+            sheetData += `<c r="F${r}" t="s"><v>${stringIndex[row.expiryDate]}</v></c>`;
+            sheetData += `<c r="G${r}"><v>${row.qty}</v></c>`;
+            sheetData += `<c r="H${r}"><v>${row.alertDays}</v></c>`;
+            sheetData += `<c r="I${r}" t="s"><v>${stringIndex[row.status]}</v></c>`;
+            sheetData += `<c r="J${r}"><v>${row.days}</v></c>`;
+            sheetData += `</row>`;
+        });
+        sheetData += '</sheetData>';
+
+        const cols = `<cols>
+<col min="1" max="1" width="14" customWidth="1"/>
+<col min="2" max="2" width="18" customWidth="1"/>
+<col min="3" max="3" width="35" customWidth="1"/>
+<col min="4" max="4" width="18" customWidth="1"/>
+<col min="5" max="5" width="15" customWidth="1"/>
+<col min="6" max="6" width="15" customWidth="1"/>
+<col min="7" max="7" width="10" customWidth="1"/>
+<col min="8" max="8" width="12" customWidth="1"/>
+<col min="9" max="9" width="20" customWidth="1"/>
+<col min="10" max="10" width="15" customWidth="1"/>
+</cols>`;
+
+        zip.file('xl/worksheets/sheet1.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<dimension ref="A1:J${rows.length + 1}"/>
+${cols}
+${sheetData}
+<drawing r:id="rId1"/>
+</worksheet>`);
+
+        zip.file('xl/worksheets/_rels/sheet1.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/>
+</Relationships>`);
+
+        let drawingAnchors = '';
+        let imageRelId = 1;
+        const drawingRels = [];
+
+        rows.forEach((row, rowIdx) => {
+            if (row.image && row.image.startsWith('data:image')) {
+                const mimeMatch = row.image.match(/data:image\/(\w+);base64,/);
+                if (!mimeMatch) return;
+                let ext = mimeMatch[1];
+                const base64Data = row.image.split(',')[1];
+                const imgName = `image${rowIdx}`;
+                zip.file(`xl/media/${imgName}.${ext}`, base64Data, { base64: true });
+                drawingRels.push({ id: `rId${imageRelId}`, target: `../media/${imgName}.${ext}` });
+
+                drawingAnchors += `<xdr:oneCellAnchor>
+<xdr:from><xdr:col>0</xdr:col><xdr:colOff>190500</xdr:colOff><xdr:row>${rowIdx + 1}</xdr:row><xdr:rowOff>190500</xdr:rowOff></xdr:from>
+<xdr:ext cx="952500" cy="952500"/>
+<xdr:pic>
+<xdr:nvPicPr>
+<xdr:cNvPr id="${rowIdx + 2}" name="Product Image ${rowIdx + 1}"/>
+<xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr>
+</xdr:nvPicPr>
+<xdr:blipFill>
+<a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="rId${imageRelId}"/>
+<a:stretch><a:fillRect/></a:stretch>
+</xdr:blipFill>
+<xdr:spPr>
+<a:xfrm><a:off x="0" y="0"/><a:ext cx="952500" cy="952500"/></a:xfrm>
+<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+</xdr:spPr>
+</xdr:pic>
+<xdr:clientData/>
+</xdr:oneCellAnchor>`;
+                imageRelId++;
+            }
+        });
+
+        zip.file('xl/drawings/drawing1.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+${drawingAnchors}
+</xdr:wsDr>`);
+
+        zip.file('xl/drawings/_rels/drawing1.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+${drawingRels.map(rel => `<Relationship Id="${rel.id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="${rel.target}"/>`).join('')}
+</Relationships>`);
+
+        zip.generateAsync({ type: 'blob', compression: 'DEFLATE' }).then(content => {
+            const dateTag = new Date().toISOString().split('T')[0];
+            const url = URL.createObjectURL(content);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `supermarket-expiry-with-images-${dateTag}.xlsx`;
+            document.body.appendChild(a); a.click(); a.remove();
+            URL.revokeObjectURL(url);
+            showToast(t('exportExcelImagesSuccess'), 'success');
+        }).catch(err => { console.error(err); showToast('Export error', 'error'); });
+    } catch (err) { console.error(err); showToast('Export error', 'error'); }
+}
+
+function escapeXml(str) {
+    return String(str).replace(/[<>&'"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' }[c]));
+}
+
+function getCellRef(col, row) {
+    let s = '';
+    let c = col;
+    while (c >= 0) { s = String.fromCharCode(65 + (c % 26)) + s; c = Math.floor(c / 26) - 1; }
+    return s + row;
+}
+
+function exportExcel() {
+    try {
+        if (batches.length === 0) { showToast(currentLang === 'ar' ? 'لا توجد بيانات للتصدير' : 'No data to export', 'warning'); return; }
+        const data = prepareExportData();
+        const worksheet = XLSX.utils.json_to_sheet(data);
+        const colWidths = Object.keys(data[0] || {}).map(() => ({ wch: 18 }));
+        worksheet['!cols'] = colWidths;
+        worksheet['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { c: 0, r: 0 }, e: { c: Object.keys(data[0] || {}).length - 1, r: data.length } }) };
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, currentLang === 'ar' ? 'المنتجات' : 'Products');
+        const stats = [
+            { [currentLang === 'ar' ? 'الحالة' : 'Status']: t('statExpired'), [currentLang === 'ar' ? 'العدد' : 'Count']: batches.filter(b => getBatchStatus(b).key === 'expired').length },
+            { [currentLang === 'ar' ? 'الحالة' : 'Status']: t('statDanger'), [currentLang === 'ar' ? 'العدد' : 'Count']: batches.filter(b => getBatchStatus(b).key === 'danger').length },
+            { [currentLang === 'ar' ? 'الحالة' : 'Status']: t('statWarning'), [currentLang === 'ar' ? 'العدد' : 'Count']: batches.filter(b => getBatchStatus(b).key === 'warning').length },
+            { [currentLang === 'ar' ? 'الحالة' : 'Status']: t('statSafe'), [currentLang === 'ar' ? 'العدد' : 'Count']: batches.filter(b => getBatchStatus(b).key === 'safe').length },
+            { [currentLang === 'ar' ? 'الحالة' : 'Status']: t('aiTotal'), [currentLang === 'ar' ? 'العدد' : 'Count']: batches.length }
+        ];
+        const statsSheet = XLSX.utils.json_to_sheet(stats);
+        statsSheet['!cols'] = [{ wch: 18 }, { wch: 10 }];
+        XLSX.utils.book_append_sheet(workbook, statsSheet, currentLang === 'ar' ? 'الإحصائيات' : 'Statistics');
+        const dateTag = new Date().toISOString().split('T')[0];
+        XLSX.writeFile(workbook, `supermarket-expiry-${dateTag}.xlsx`);
+        showToast(t('exportExcelSuccess'), 'success');
+    } catch (err) { console.error(err); showToast('Export error', 'error'); }
+}
+
+function exportCSV() {
+    try {
+        if (batches.length === 0) { showToast(currentLang === 'ar' ? 'لا توجد بيانات للتصدير' : 'No data to export', 'warning'); return; }
+        const data = prepareExportData();
+        const csv = '\uFEFF' + XLSX.utils.sheet_to_csv(XLSX.utils.json_to_sheet(data));
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const dateTag = new Date().toISOString().split('T')[0];
+        a.href = url; a.download = `supermarket-expiry-${dateTag}.csv`;
+        document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(url);
+        showToast(t('exportCSVSuccess'), 'success');
+    } catch (err) { console.error(err); showToast('CSV export error', 'error'); }
+}
+
+function exportData() {
+    const payload = { version: 2, exportedAt: new Date().toISOString(), batches, catalog };
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(payload, null, 2));
+    const a = document.createElement('a');
+    const dateTag = new Date().toISOString().split('T')[0];
+    a.setAttribute("href", dataStr);
+    a.setAttribute("download", `supermarket-expiry-${dateTag}.json`);
+    document.body.appendChild(a); a.click(); a.remove();
+    showToast(t('exportSuccess'), 'success');
+}
+
+function exportGoogleSheets() {
+    if (batches.length === 0) { showToast(currentLang === 'ar' ? 'لا توجد بيانات للتصدير' : 'No data to export', 'warning'); return; }
+    try {
+        const data = prepareExportData();
+        const headers = Object.keys(data[0] || {});
+        const rows = data.map(row => headers.map(h => `"${String(row[h] || '').replace(/"/g, '""')}"`).join('\t'));
+        const tsv = [headers.join('\t'), ...rows].join('\n');
+        copyToClipboard(tsv).then(() => {
+            const win = window.open('https://sheets.new', '_blank');
+            if (!win) { showToast(currentLang === 'ar' ? 'تم نسخ البيانات! لكن يجب السماح بالنوافذ المنبثقة' : 'Data copied! But please allow popups', 'warning'); return; }
+            showToast(currentLang === 'ar' ? '📋 تم نسخ البيانات! اضغط Ctrl+V في Google Sheets' : '📋 Data copied! Press Ctrl+V in Google Sheets', 'success');
+            closeBackupModal();
+        }).catch(() => {
+            const blob = new Blob([tsv], { type: 'text/tab-separated-values;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const dateTag = new Date().toISOString().split('T')[0];
+            a.href = url; a.download = `supermarket-expiry-${dateTag}.tsv`;
+            document.body.appendChild(a); a.click(); a.remove();
+            URL.revokeObjectURL(url);
+            showToast(currentLang === 'ar' ? 'تم تنزيل ملف TSV لـ Google Sheets' : 'TSV file downloaded for Google Sheets', 'success');
+        });
+    } catch (err) { console.error(err); showToast('Google Sheets export error', 'error'); }
+}
+
+function importData(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const ext = file.name.split('.').pop().toLowerCase();
+    const reader = new FileReader();
+    if (ext === 'json') {
+        reader.onload = function(e) {
+            try {
+                const imported = JSON.parse(e.target.result);
+                if (Array.isArray(imported.batches)) {
+                    const nb = imported.batches;
+                    const nc = imported.catalog || {};
+                    nb.forEach(b => { if (!b.entryDate) b.entryDate = todayStr(); });
+                    replaceAllData(nb, nc);
+                    closeBackupModal();
+                    showToast(t('importSuccess', nb.length), 'success');
+                } else showToast(t('importInvalid'), 'error');
+            } catch (err) { showToast(t('importError'), 'error'); }
+        };
+        reader.readAsText(file);
+    } else if (ext === 'csv' || ext === 'xlsx' || ext === 'xls') {
+        reader.onload = function(e) {
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                const rows = XLSX.utils.sheet_to_json(firstSheet);
+                if (rows.length === 0) { showToast(t('importInvalid'), 'error'); return; }
+                const importedBatches = rows.map((row, idx) => {
+                    const barcode = row['الباركود'] || row['Barcode'] || row['barcode'] || '';
+                    const name = row['اسم الصنف'] || row['Product Name'] || row['name'] || row['Name'] || '';
+                    const categoryLabel = row['القسم'] || row['Category'] || row['category'] || '';
+                    const entryDate = row['تاريخ الدخول'] || row['Entry Date'] || row['entryDate'] || todayStr();
+                    const expiryDate = row['تاريخ الانتهاء'] || row['Expiry Date'] || row['expiryDate'] || row['Expiry'] || '';
+                    const qty = parseInt(row['الكمية'] || row['Quantity'] || row['qty'] || 1) || 1;
+                    const alertDays = parseInt(row['أيام التنبيه'] || row['Alert Days'] || row['alertDays'] || 7) || 7;
+                    let category = 'other';
+                    const catLower = String(categoryLabel).toLowerCase();
+                    if (catLower.includes('ألبان') || catLower.includes('dairy')) category = 'dairy';
+                    else if (catLower.includes('معلب') || catLower.includes('canned')) category = 'canned';
+                    else if (catLower.includes('مشروب') || catLower.includes('drink')) category = 'drinks';
+                    else if (catLower.includes('حلو') || catLower.includes('sweet')) category = 'sweets';
+                    else if (catLower.includes('مجمد') || catLower.includes('frozen')) category = 'frozen';
+                    if (!name) return null;
+                    return { id: 'batch-' + Date.now() + '-' + idx, barcode: String(barcode), name: String(name), category, entryDate: String(entryDate), expiryDate: String(expiryDate), qty, alertDays, image: '' };
+                }).filter(Boolean);
+                if (importedBatches.length === 0) { showToast(t('importInvalid'), 'error'); return; }
+                openConfirmDialog(
+                    currentLang === 'ar' ? 'استيراد البيانات؟' : 'Import data?',
+                    currentLang === 'ar' ? `سيتم استبدال البيانات الحالية بـ ${importedBatches.length} صنف.` : `Replace with ${importedBatches.length} items?`,
+                    () => {
+                        const nc = {};
+                        importedBatches.forEach(b => { if (b.barcode) nc[b.barcode] = { name: b.name, category: b.category, image: b.image, alertDays: b.alertDays }; });
+                        replaceAllData(importedBatches, nc);
+                        closeBackupModal();
+                        showToast(t('importSuccess', importedBatches.length), 'success');
+                    }
+                );
+            } catch (err) { console.error(err); showToast(t('importError'), 'error'); }
+        };
+        reader.readAsArrayBuffer(file);
+    } else showToast(t('importInvalid'), 'error');
+}
+
+function requestClearAll() {
+    closeBackupModal();
+    openConfirmDialog(t('clearAllConfirmTitle'), t('clearAllConfirmMsg'), () => {
+        replaceAllData([], {});
+        showToast(t('clearAllSuccess'), 'success');
+    });
+}
+
+function openAIModal() { document.getElementById('aiModal').classList.remove('hidden'); document.getElementById('aiContent').innerHTML = ''; lucide.createIcons(); }
+function closeAIModal() { document.getElementById('aiModal').classList.add('hidden'); }
+
+function showAILoading(callback) {
+    const loader = document.getElementById('aiLoading');
+    loader.classList.remove('hidden');
+    document.getElementById('aiContent').innerHTML = '';
+    setTimeout(() => { loader.classList.add('hidden'); callback(); }, 600);
+}
+
+function aiCard(icon, title, body, color = 'purple') {
+    return `<div class="bg-${color}-50 border border-${color}-200 rounded-2xl p-4">
+        <div class="flex items-center gap-2 mb-2">
+            <i data-lucide="${icon}" class="w-5 h-5 text-${color}-600"></i>
+            <h4 class="font-extrabold text-${color}-900 text-sm">${title}</h4>
+        </div>
+        <div class="text-xs text-${color}-800 leading-relaxed font-semibold">${body}</div>
+    </div>`;
+}
+
+function runAIAnalysis() {
+    showAILoading(() => {
+        if (batches.length === 0) { document.getElementById('aiContent').innerHTML = aiCard('info', t('aiAnalysisTitle'), t('aiNoData'), 'slate'); lucide.createIcons(); return; }
+        const counts = { expired: 0, danger: 0, warning: 0, safe: 0 };
+        let totalQty = 0; const catCount = {};
+        batches.forEach(b => { const st = getBatchStatus(b); counts[st.key]++; totalQty += b.qty; catCount[b.category] = (catCount[b.category] || 0) + b.qty; });
+        const riskRate = Math.round(((counts.expired + counts.danger) / batches.length) * 100);
+        const topCat = Object.entries(catCount).sort((a, b) => b[1] - a[1])[0];
+        document.getElementById('aiContent').innerHTML = aiCard('bar-chart-3', t('aiAnalysisTitle'), `
+            <div class="grid grid-cols-2 gap-2 mt-1">
+                <div class="bg-white rounded-lg p-2 text-center border border-purple-100"><div class="text-lg font-extrabold text-purple-700">${batches.length}</div><div class="text-[10px]">${t('aiTotal')}</div></div>
+                <div class="bg-white rounded-lg p-2 text-center border border-purple-100"><div class="text-lg font-extrabold text-purple-700">${totalQty}</div><div class="text-[10px]">${t('aiTotalQty')}</div></div>
+                <div class="bg-white rounded-lg p-2 text-center border border-purple-100"><div class="text-lg font-extrabold text-purple-700">${Object.keys(catCount).length}</div><div class="text-[10px]">${t('aiCategories')}</div></div>
+                <div class="bg-white rounded-lg p-2 text-center border border-purple-100"><div class="text-lg font-extrabold ${riskRate > 30 ? 'text-red-600' : 'text-emerald-600'}">${riskRate}%</div><div class="text-[10px]">${t('aiRiskRate')}</div></div>
+            </div>
+            ${topCat ? `<p class="mt-2 text-[11px]">📦 ${getCategoryLabel(topCat[0])}: <b>${topCat[1]}</b></p>` : ''}
+        `, 'purple');
+        lucide.createIcons();
+    });
+}
+
+function runAIPriority() {
+    showAILoading(() => {
+        if (batches.length === 0) { document.getElementById('aiContent').innerHTML = aiCard('info', t('aiPriorityTitle'), t('aiNoData'), 'slate'); lucide.createIcons(); return; }
+        const enriched = batches.map(b => ({ ...b, st: getBatchStatus(b) })).sort((a, b) => a.st.days - b.st.days);
+        const top5 = enriched.slice(0, 5);
+        document.getElementById('aiContent').innerHTML = aiCard('list-ordered', t('aiPriorityTitle'), `
+            <div class="space-y-2">
+                ${top5.map((b, i) => `
+                    <div class="flex items-center gap-2 bg-white rounded-lg p-2 border border-indigo-100">
+                        <span class="w-6 h-6 rounded-full bg-indigo-600 text-white text-[10px] font-extrabold flex items-center justify-center">${i+1}</span>
+                        <div class="flex-1 min-w-0">
+                            <div class="font-bold text-indigo-900 break-words text-[11px]">${escapeHtml(b.name)}</div>
+                            <div class="text-[10px] text-indigo-600">${b.st.label} · ${t('qty')} ${b.qty}</div>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `, 'indigo');
+        lucide.createIcons();
+    });
+}
+
+function runAIReport() {
+    showAILoading(() => {
+        const counts = { expired: 0, danger: 0, warning: 0, safe: 0 };
+        let totalQty = 0;
+        batches.forEach(b => { counts[getBatchStatus(b).key]++; totalQty += b.qty; });
+        document.getElementById('aiContent').innerHTML = aiCard('file-text', t('aiReportTitle'), `
+            <table class="w-full text-[11px]">
+                <tr><td>🔴 ${t('statExpired')}</td><td class="text-right font-extrabold">${counts.expired}</td></tr>
+                <tr><td>🟠 ${t('statDanger')}</td><td class="text-right font-extrabold">${counts.danger}</td></tr>
+                <tr><td>🟡 ${t('statWarning')}</td><td class="text-right font-extrabold">${counts.warning}</td></tr>
+                <tr><td>🟢 ${t('statSafe')}</td><td class="text-right font-extrabold">${counts.safe}</td></tr>
+                <tr class="border-t border-emerald-200"><td class="pt-1">📦 ${t('aiTotalQty')}</td><td class="text-right font-extrabold pt-1">${totalQty}</td></tr>
+            </table>
+            <div class="mt-2 text-[10px] text-emerald-700">${new Date().toLocaleString(currentLang === 'ar' ? 'ar-EG' : 'en-US')}</div>
+        `, 'emerald');
+        lucide.createIcons();
+    });
+}
+
+function runAIAdvice() {
+    showAILoading(() => {
+        if (batches.length === 0) { document.getElementById('aiContent').innerHTML = aiCard('info', t('aiAdviceTitle'), t('aiNoData'), 'slate'); lucide.createIcons(); return; }
+        const tips = [];
+        let expired = 0, danger = 0;
+        batches.forEach(b => { const k = getBatchStatus(b).key; if (k === 'expired') expired++; if (k === 'danger') danger++; });
+        if (expired > 0) tips.push(currentLang === 'ar' ? `🚨 أزل ${expired} منتج منتهي فوراً.` : `🚨 Remove ${expired} expired products immediately.`);
+        if (danger > 0) tips.push(currentLang === 'ar' ? `⚡ ضع ${danger} منتج في عرض ترويجي.` : `⚡ Place ${danger} items in a promotional display.`);
+        if (expired === 0 && danger === 0) tips.push(currentLang === 'ar' ? '✅ وضعك ممتاز! استمر في المتابعة.' : '✅ Excellent! Continue monitoring.');
+        tips.push(currentLang === 'ar' ? '💾 لا تنسَ تصدير نسخة احتياطية أسبوعياً.' : '💾 Do not forget to export a weekly backup.');
+        if (batches.length > 20) tips.push(currentLang === 'ar' ? '📊 لديك مخزون كبير، فكر في تحليل الأكثر مبيعاً.' : '📊 Large inventory, consider analyzing best-sellers.');
+        document.getElementById('aiContent').innerHTML = aiCard('lightbulb', t('aiAdviceTitle'), `<ul class="space-y-1.5">${tips.map(tip => `<li>${tip}</li>`).join('')}</ul>`, 'amber');
+        lucide.createIcons();
+    });
+}
+
+function openConfirmDialog(title, message, onConfirm) {
+    document.getElementById('confirmTitle').textContent = title;
+    document.getElementById('confirmMessage').textContent = message;
+    confirmCallback = onConfirm;
+    document.getElementById('confirmDialog').classList.remove('hidden');
+}
+
+function closeConfirmDialog() {
+    document.getElementById('confirmDialog').classList.add('hidden');
+    confirmCallback = null;
+}
+
+document.getElementById('confirmYesBtn').onclick = function() {
+    const cb = confirmCallback;
+    closeConfirmDialog();
+    if (cb) cb();
+};
+
+function showToast(text, type = 'success') {
+    const toast = document.getElementById('toast');
+    const icon = document.getElementById('toastIcon');
+    const textEl = document.getElementById('toastText');
+    icon.textContent = type === 'error' ? '❌' : (type === 'warning' ? '⚠️' : '✅');
+    textEl.textContent = text;
+    toast.classList.remove('opacity-0', '-translate-y-2');
+    toast.classList.add('opacity-100', 'translate-y-0');
+    clearTimeout(toastTimeout);
+    toastTimeout = setTimeout(() => {
+        toast.classList.remove('opacity-100', 'translate-y-0');
+        toast.classList.add('opacity-0', '-translate-y-2');
+    }, 3500);
+}
+
+function copyToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        return navigator.clipboard.writeText(text);
+    }
+    return new Promise((resolve, reject) => {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); resolve(); } catch (e) { reject(e); }
+        document.body.removeChild(ta);
+    });
+}
+
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+        closeImageViewer();
+        closeProductDetail();
+    }
+});
+
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') { saveData(); saveFilters(); }
+});
+window.addEventListener('beforeunload', () => { saveData(); saveFilters(); });
+</script>
+</body>
+</html>
