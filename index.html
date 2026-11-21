@@ -517,6 +517,23 @@
         </div>
     </div>
 
+    <!-- نافذة إدخال رمز النسخ الاحتياطي -->
+    <div id="pinModal" class="hidden fixed inset-0 z-[65] bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
+        <form onsubmit="submitPin(event)" class="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl text-center space-y-4">
+            <div class="w-12 h-12 rounded-full bg-sky-100 text-sky-600 flex items-center justify-center mx-auto">
+                <i data-lucide="lock" class="w-6 h-6"></i>
+            </div>
+            <h4 class="font-extrabold text-slate-900 text-base">أدخل الرمز للمتابعة</h4>
+            <input type="password" id="pinInput" inputmode="numeric" autocomplete="off" dir="ltr" placeholder="••••••••"
+                class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-3 text-center text-lg font-extrabold tracking-widest focus:outline-none focus:border-sky-600">
+            <p id="pinError" class="hidden text-xs font-bold text-red-600">الرمز غير صحيح</p>
+            <div class="flex gap-2.5">
+                <button type="submit" class="flex-1 bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 rounded-xl text-sm">دخول</button>
+                <button type="button" onclick="closePinModal()" class="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold py-2.5 rounded-xl text-sm">إلغاء</button>
+            </div>
+        </form>
+    </div>
+
     <div id="confirmDialog" class="hidden fixed inset-0 z-[70] bg-slate-950/80 flex items-center justify-center p-4">
         <div class="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl text-center space-y-4">
             <div class="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto">
@@ -1797,10 +1814,53 @@ function triggerAlertCheck(manualClick = false) {
     }
 }
 
+// ==========================================
+// 🔒 حماية نافذة النسخ الاحتياطي برمز
+// ==========================================
+const BACKUP_PIN_HASH = '922f331e31b9906aa30534457003b1942e311401804ccff5c2437a188d33755d';
+let backupUnlocked = false;
+
+async function sha256Hex(str) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 function openBackupModal() {
+    if (backupUnlocked) { showBackupModal(); return; }
+    openPinModal();
+}
+
+function showBackupModal() {
     refreshCloudStatusText();
     document.getElementById('backupModal').classList.remove('hidden');
     lucide.createIcons();
+}
+
+function openPinModal() {
+    const input = document.getElementById('pinInput');
+    input.value = '';
+    document.getElementById('pinError').classList.add('hidden');
+    document.getElementById('pinModal').classList.remove('hidden');
+    lucide.createIcons();
+    setTimeout(() => input.focus(), 50);
+}
+
+function closePinModal() { document.getElementById('pinModal').classList.add('hidden'); }
+
+async function submitPin(e) {
+    if (e) e.preventDefault();
+    const val = document.getElementById('pinInput').value.trim();
+    let ok = false;
+    try { ok = (await sha256Hex(val)) === BACKUP_PIN_HASH; } catch (err) { ok = false; }
+    if (ok) {
+        backupUnlocked = true;
+        closePinModal();
+        showBackupModal();
+    } else {
+        document.getElementById('pinError').classList.remove('hidden');
+        document.getElementById('pinInput').value = '';
+        document.getElementById('pinInput').focus();
+    }
 }
 function closeBackupModal() { document.getElementById('backupModal').classList.add('hidden'); }
 
