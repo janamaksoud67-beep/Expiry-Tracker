@@ -100,6 +100,12 @@
             -webkit-box-orient: vertical;
             overflow: hidden;
         }
+
+        .avatar { border-radius: 9999px; object-fit: cover; flex-shrink: 0; border: 1.5px solid rgba(148,163,184,0.5); }
+        .avatar-fallback { border-radius: 9999px; display: inline-flex; align-items: center; justify-content: center; font-weight: 800; color: #fff; flex-shrink: 0; background: linear-gradient(135deg, #10b981, #0ea5e9); }
+        .log-row { border-inline-start: 3px solid #10b981; }
+        #scanStatus { min-height: 1.1rem; }
+        .scan-ok { color: #34d399; } .scan-warn { color: #fbbf24; } .scan-info { color: #cbd5e1; }
     </style>
 </head>
 <body class="text-slate-800 pb-24 select-none">
@@ -133,6 +139,22 @@
                 <button onclick="openBackupModal()" class="p-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl transition active:scale-95">
                     <i data-lucide="database-backup" class="w-5 h-5 text-sky-400"></i>
                 </button>
+            </div>
+        </div>
+
+        <div class="bg-slate-800/60 border-t border-slate-700/60 px-3 py-1.5">
+            <div class="max-w-3xl mx-auto flex items-center justify-between gap-2">
+                <div id="userChip" class="flex items-center gap-2 min-w-0"></div>
+                <div class="flex items-center gap-1.5 shrink-0">
+                    <button onclick="openHistoryModal()" class="relative flex items-center gap-1.5 bg-slate-700 hover:bg-slate-600 text-white text-[11px] font-bold px-2.5 py-1.5 rounded-lg active:scale-95 transition">
+                        <i data-lucide="history" class="w-4 h-4 text-emerald-400"></i>
+                        <span data-i18n="historyBtn">سجل التصريف</span>
+                        <span id="historyCount" class="hidden bg-emerald-500 text-slate-900 text-[10px] font-extrabold px-1.5 rounded-md"></span>
+                    </button>
+                    <button onclick="requestLogout()" class="bg-slate-700 hover:bg-red-600 text-white p-1.5 rounded-lg active:scale-95 transition" data-i18n-title="logoutBtn" title="تسجيل الخروج">
+                        <i data-lucide="log-out" class="w-4 h-4"></i>
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -258,6 +280,7 @@
             </div>
             <div class="p-4 bg-slate-900">
                 <div id="reader" class="w-full overflow-hidden rounded-2xl bg-black min-h-[250px]"></div>
+                <p id="scanStatus" class="text-center text-[11px] font-bold mt-2 scan-info"></p>
                 <p id="scannerError" class="hidden text-red-400 text-xs text-center mt-3 font-semibold"></p>
                 <p class="text-emerald-400 text-[11px] text-center mt-2 font-semibold flex items-center justify-center gap-1">
                     <i data-lucide="qr-code" class="w-3.5 h-3.5"></i>
@@ -299,6 +322,7 @@
                             <span data-i18n="scanBtn">مسح</span>
                         </button>
                     </div>
+                    <p id="barcodeHint" class="hidden mt-1.5 text-[11px] font-bold text-amber-600"></p>
                 </div>
 
                 <div class="bg-sky-50/70 border border-sky-200 p-3 rounded-2xl flex items-center justify-between gap-2">
@@ -548,7 +572,139 @@
         </div>
     </div>
 
-    <div id="toast" class="fixed top-20 left-1/2 -translate-x-1/2 z-[80] pointer-events-none opacity-0 transition-all duration-300 transform -translate-y-2">
+    <!-- نافذة سجل التصريف -->
+    <div id="historyModal" class="hidden fixed inset-0 z-[56] bg-slate-950/85 backdrop-blur-sm overflow-y-auto p-3 sm:p-6">
+        <div class="bg-white rounded-3xl max-w-2xl w-full mx-auto my-4 shadow-2xl overflow-hidden">
+            <div class="bg-slate-900 text-white px-5 py-4 flex items-center justify-between sticky top-0 z-10">
+                <h3 class="font-extrabold text-base flex items-center gap-2">
+                    <i data-lucide="history" class="w-5 h-5 text-emerald-400"></i>
+                    <span data-i18n="historyTitle">سجل المنتجات المصرّفة</span>
+                </h3>
+                <button onclick="closeHistoryModal()" class="bg-slate-800 p-1.5 rounded-xl text-slate-300 hover:text-white">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div class="p-4 space-y-3">
+                <div id="historySummary" class="grid grid-cols-2 gap-2"></div>
+                <div id="historyUserChips" class="flex gap-1.5 flex-wrap"></div>
+                <div class="grid grid-cols-2 gap-2">
+                    <select id="hUser" onchange="onHistoryFilter()" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-bold focus:outline-none focus:border-emerald-600"></select>
+                    <select id="hPeriod" onchange="onHistoryFilter()" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-bold focus:outline-none focus:border-emerald-600">
+                        <option value="all" data-i18n="histPeriodAll">كل الأوقات</option>
+                        <option value="today" data-i18n="histToday">اليوم</option>
+                        <option value="7" data-i18n="hist7">آخر 7 أيام</option>
+                        <option value="30" data-i18n="hist30">آخر 30 يوم</option>
+                    </select>
+                </div>
+                <input type="text" id="hSearch" oninput="onHistoryFilter()" data-i18n-placeholder="histSearch" placeholder="ابحث في السجل..."
+                    class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-semibold focus:outline-none focus:border-emerald-600">
+                <div id="historyList" class="space-y-2"></div>
+                <button id="historyMore" onclick="showMoreHistory()" class="hidden w-full bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold py-2.5 rounded-xl text-xs" data-i18n="histMore">عرض المزيد</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- نافذة التصريف -->
+    <div id="disposeModal" class="hidden fixed inset-0 z-[72] bg-slate-950/80 flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl space-y-4">
+            <div class="text-center">
+                <div class="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-2">
+                    <i data-lucide="check-circle-2" class="w-6 h-6"></i>
+                </div>
+                <h4 class="font-extrabold text-slate-900 text-base" data-i18n="disposeTitle">تصريف الصنف</h4>
+                <p id="disposeName" class="text-xs text-slate-600 mt-1 break-words font-bold"></p>
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1.5" data-i18n="disposeQtyLabel">الكمية المراد تصريفها</label>
+                <div class="flex items-center border border-slate-300 rounded-xl overflow-hidden bg-slate-50">
+                    <button type="button" onclick="adjustDisposeQty(-1)" class="px-4 py-2.5 bg-slate-200 hover:bg-slate-300 font-extrabold text-lg">-</button>
+                    <input type="number" id="disposeQty" value="1" min="1" class="w-full text-center bg-transparent font-extrabold text-base focus:outline-none">
+                    <button type="button" onclick="adjustDisposeQty(1)" class="px-4 py-2.5 bg-slate-200 hover:bg-slate-300 font-extrabold text-lg">+</button>
+                </div>
+                <p class="text-[11px] text-slate-500 text-center mt-1.5 font-bold"><span data-i18n="disposeOf">من أصل</span> <b id="disposeMax"></b></p>
+            </div>
+            <div class="flex gap-2.5">
+                <button onclick="confirmDispose()" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-xl text-sm" data-i18n="disposeConfirmBtn">تأكيد التصريف</button>
+                <button onclick="closeDisposeModal()" class="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold py-2.5 rounded-xl text-sm" data-i18n="cancelBtn">إلغاء</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- شاشة الدخول / التسجيل -->
+    <div id="authScreen" class="fixed inset-0 z-[90] bg-slate-900 overflow-y-auto">
+        <div class="min-h-full flex items-center justify-center p-4">
+            <div class="w-full max-w-md">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-2.5 text-white">
+                        <div class="bg-emerald-500 p-2 rounded-xl text-slate-900"><i data-lucide="scan-barcode" class="w-6 h-6"></i></div>
+                        <div>
+                            <h1 class="font-extrabold text-lg leading-tight" data-i18n="appTitle">متتبع الصلاحية</h1>
+                            <p class="text-xs text-slate-400" data-i18n="authSub">سجّل دخولك لمتابعة رفوف السوبر ماركت</p>
+                        </div>
+                    </div>
+                    <button onclick="toggleLanguage()" class="p-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-extrabold text-emerald-400"><span id="langLabel2">EN</span></button>
+                </div>
+
+                <div class="bg-white rounded-3xl shadow-2xl overflow-hidden">
+                    <div class="grid grid-cols-2 gap-1.5 bg-slate-100 p-1.5 m-3 rounded-2xl">
+                        <button id="tabLogin" type="button" onclick="setAuthMode('login')" class="py-2.5 rounded-xl text-sm font-extrabold" data-i18n="authLogin">تسجيل الدخول</button>
+                        <button id="tabRegister" type="button" onclick="setAuthMode('register')" class="py-2.5 rounded-xl text-sm font-extrabold" data-i18n="authRegister">حساب جديد</button>
+                    </div>
+                    <p id="authError" class="hidden mx-5 mb-1 bg-red-50 border border-red-200 text-red-600 text-xs font-bold px-3 py-2 rounded-xl"></p>
+
+                    <form id="loginForm" onsubmit="doLogin(event)" class="p-5 pt-3 space-y-3.5">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1.5" data-i18n="authPhone">رقم الهاتف</label>
+                            <input type="tel" id="loginPhone" dir="ltr" inputmode="tel" autocomplete="username" required
+                                class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-3 text-sm font-bold focus:outline-none focus:border-emerald-600 focus:bg-white">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1.5" data-i18n="authPass">كلمة المرور</label>
+                            <input type="password" id="loginPass" dir="ltr" autocomplete="current-password" required
+                                class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-3 text-sm font-bold focus:outline-none focus:border-emerald-600 focus:bg-white">
+                        </div>
+                        <button type="submit" id="loginSubmit" class="w-full bg-emerald-600 hover:bg-emerald-700 active:scale-95 transition text-white font-extrabold py-3.5 rounded-2xl text-base shadow-lg shadow-emerald-600/20" data-i18n="authLoginBtn">دخول</button>
+                    </form>
+
+                    <form id="registerForm" onsubmit="doRegister(event)" class="hidden p-5 pt-3 space-y-3.5">
+                        <div class="flex items-center gap-3">
+                            <label for="regImage" class="cursor-pointer block w-20 h-20 rounded-full border-2 border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100 overflow-hidden relative flex items-center justify-center text-slate-400 shrink-0">
+                                <img id="regPreview" src="" alt="" class="hidden w-full h-full object-cover">
+                                <i id="regPlaceholder" data-lucide="camera" class="w-7 h-7 text-slate-500"></i>
+                            </label>
+                            <input type="file" id="regImage" accept="image/*" onchange="processProfilePhoto(event)" class="hidden">
+                            <p class="text-xs font-bold text-slate-600" data-i18n="authPhotoHint">صورتك الشخصية (اختياري)</p>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1.5" data-i18n="authName">الاسم الكامل</label>
+                            <input type="text" id="regName" autocomplete="name" required maxlength="40"
+                                class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-3 text-sm font-bold focus:outline-none focus:border-emerald-600 focus:bg-white">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1.5" data-i18n="authPhone">رقم الهاتف</label>
+                            <input type="tel" id="regPhone" dir="ltr" inputmode="tel" autocomplete="tel" required
+                                class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-3 text-sm font-bold focus:outline-none focus:border-emerald-600 focus:bg-white">
+                        </div>
+                        <div class="grid grid-cols-2 gap-2.5">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 mb-1.5" data-i18n="authPass">كلمة المرور</label>
+                                <input type="password" id="regPass" dir="ltr" autocomplete="new-password" required
+                                    class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-3 text-sm font-bold focus:outline-none focus:border-emerald-600 focus:bg-white">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 mb-1.5" data-i18n="authPass2">تأكيد كلمة المرور</label>
+                                <input type="password" id="regPass2" dir="ltr" autocomplete="new-password" required
+                                    class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-3 text-sm font-bold focus:outline-none focus:border-emerald-600 focus:bg-white">
+                            </div>
+                        </div>
+                        <button type="submit" id="registerSubmit" class="w-full bg-emerald-600 hover:bg-emerald-700 active:scale-95 transition text-white font-extrabold py-3.5 rounded-2xl text-base shadow-lg shadow-emerald-600/20" data-i18n="authRegisterBtn">إنشاء الحساب</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="fixed top-20 left-1/2 -translate-x-1/2 z-[100] pointer-events-none opacity-0 transition-all duration-300 transform -translate-y-2">
         <div id="toastContent" class="bg-slate-900 text-white px-4 py-2.5 rounded-2xl shadow-xl text-xs font-bold flex items-center gap-2 border border-slate-700">
             <span id="toastIcon"></span>
             <span id="toastText"></span>
@@ -680,7 +836,53 @@ const I18N = {
         productDescription: 'الوصف',
         productImage: 'صورة المنتج',
         noImage: 'لا توجد صورة',
-        closeBtn: 'إغلاق'
+        closeBtn: 'إغلاق',
+        // الحسابات
+        authSub: 'سجّل دخولك لمتابعة رفوف السوبر ماركت',
+        authLogin: 'تسجيل الدخول', authRegister: 'حساب جديد',
+        authName: 'الاسم الكامل', authPhone: 'رقم الهاتف', authPass: 'كلمة المرور', authPass2: 'تأكيد كلمة المرور',
+        authPhotoHint: 'صورتك الشخصية (اختياري)',
+        authLoginBtn: 'دخول', authRegisterBtn: 'إنشاء الحساب',
+        authFillAll: 'أدخل رقم الهاتف وكلمة المرور',
+        authBadLogin: 'رقم الهاتف أو كلمة المرور غير صحيحة',
+        authNetError: 'تعذر الاتصال بقاعدة البيانات. تحقق من الإنترنت وقواعد Firestore.',
+        authPhoneExists: 'رقم الهاتف هذا مسجّل مسبقاً، سجّل الدخول بدلاً من ذلك',
+        authNameShort: 'اكتب اسمك (حرفان على الأقل)',
+        authPhoneBad: 'رقم الهاتف غير صالح',
+        authPassShort: 'كلمة المرور يجب ألا تقل عن 6 أحرف',
+        authPassMismatch: 'كلمتا المرور غير متطابقتين',
+        welcomeUser: (n) => `أهلاً ${n} 👋`,
+        logoutBtn: 'تسجيل الخروج', logoutTitle: 'تسجيل الخروج؟', logoutMsg: 'هل تريد تسجيل الخروج من هذا الحساب؟',
+        loggedOutForced: 'هذا الحساب غير موجود في هذا المحل. تم تسجيل الخروج.',
+        // سجل التصريف
+        historyBtn: 'سجل التصريف', historyTitle: 'سجل المنتجات المصرّفة',
+        histTotalOps: 'عدد عمليات التصريف', histTotalQty: 'إجمالي الكمية المصرّفة',
+        histAllUsers: 'كل الموظفين', histSearch: 'ابحث في السجل...',
+        histPeriodAll: 'كل الأوقات', histToday: 'اليوم', hist7: 'آخر 7 أيام', hist30: 'آخر 30 يوم',
+        histEmpty: 'لا توجد عمليات تصريف مسجّلة', histBy: 'صرّفها', histExpired: 'كان منتهياً', histEarly: 'قبل الانتهاء',
+        histRestore: 'إرجاع للرفوف', histMore: 'عرض المزيد',
+        restoreTitle: 'إرجاع الصنف للرفوف؟',
+        restoreMsg: (n, q) => `سيتم إرجاع ${q} من "${n}" إلى قائمة المتابعة وإزالتها من السجل.`,
+        restoreSuccess: 'تم إرجاع الصنف للرفوف',
+        disposeTitle: 'تصريف الصنف', disposeQtyLabel: 'الكمية المراد تصريفها', disposeOf: 'من أصل',
+        disposeConfirmBtn: 'تأكيد التصريف',
+        disposeSuccess: (n) => `تم تصريف ${n} وحفظها في السجل`,
+        // سجل النشاط
+        activityLog: 'سجل النشاط', lastEditBy: 'آخر تعديل:',
+        logAdd: (q) => `أضاف الصنف (الكمية ${q})`,
+        logQtyUp: (a, b) => `زاد الكمية من ${a} إلى ${b}`,
+        logQtyDown: (a, b) => `أنقص الكمية من ${a} إلى ${b}`,
+        logEdit: (f) => `عدّل: ${f}`,
+        logDispose: (q, r) => `صرّف ${q} (المتبقي ${r})`,
+        logRestore: (q) => `أعاد ${q} من سجل التصريف`,
+        field_name: 'الاسم', field_barcode: 'الباركود', field_category: 'القسم', field_expiryDate: 'تاريخ الانتهاء',
+        field_alertDays: 'أيام التنبيه', field_entryDate: 'تاريخ الدخول', field_image: 'الصورة',
+        // الماسح
+        scanHintAim: 'ثبّت الكاميرا على الباركود بحيث يكون واضحاً ومضاءً',
+        scanVerifying: (a, b) => `جاري التحقق من القراءة... (${a}/${b})`,
+        scanRejected: 'قراءة غير واضحة — تم تجاهلها. قرّب الكاميرا وثبّتها',
+        scanOk: '✅ تمت القراءة بنجاح',
+        barcodeBad: '⚠️ الرقم لا يطابق فحص الخانة الأخيرة — قد يكون خاطئاً، راجعه.'
     },
     en: {
         appTitle: 'Expiry Tracker', appSubtitle: 'Supermarket Shelf Management',
@@ -781,14 +983,61 @@ const I18N = {
         productDescription: 'Description',
         productImage: 'Product Image',
         noImage: 'No image',
-        closeBtn: 'Close'
+        closeBtn: 'Close',
+        // Accounts
+        authSub: 'Sign in to manage supermarket shelves',
+        authLogin: 'Log in', authRegister: 'New account',
+        authName: 'Full name', authPhone: 'Phone number', authPass: 'Password', authPass2: 'Confirm password',
+        authPhotoHint: 'Profile photo (optional)',
+        authLoginBtn: 'Log in', authRegisterBtn: 'Create account',
+        authFillAll: 'Enter phone number and password',
+        authBadLogin: 'Wrong phone number or password',
+        authNetError: 'Could not reach the database. Check internet and Firestore rules.',
+        authPhoneExists: 'This phone number is already registered, please log in',
+        authNameShort: 'Enter your name (2+ characters)',
+        authPhoneBad: 'Invalid phone number',
+        authPassShort: 'Password must be at least 6 characters',
+        authPassMismatch: 'Passwords do not match',
+        welcomeUser: (n) => `Welcome ${n} 👋`,
+        logoutBtn: 'Log out', logoutTitle: 'Log out?', logoutMsg: 'Do you want to log out of this account?',
+        loggedOutForced: 'This account does not exist in this shop. Logged out.',
+        // Disposal history
+        historyBtn: 'Disposal History', historyTitle: 'Disposed Products History',
+        histTotalOps: 'Disposal operations', histTotalQty: 'Total quantity disposed',
+        histAllUsers: 'All staff', histSearch: 'Search history...',
+        histPeriodAll: 'All time', histToday: 'Today', hist7: 'Last 7 days', hist30: 'Last 30 days',
+        histEmpty: 'No disposal records yet', histBy: 'Disposed by', histExpired: 'Was expired', histEarly: 'Before expiry',
+        histRestore: 'Restore to shelf', histMore: 'Show more',
+        restoreTitle: 'Restore item to shelf?',
+        restoreMsg: (n, q) => `${q} of "${n}" will be returned to the tracking list and removed from history.`,
+        restoreSuccess: 'Item restored to shelf',
+        disposeTitle: 'Dispose item', disposeQtyLabel: 'Quantity to dispose', disposeOf: 'out of',
+        disposeConfirmBtn: 'Confirm disposal',
+        disposeSuccess: (n) => `Disposed ${n} and saved to history`,
+        // Activity log
+        activityLog: 'Activity log', lastEditBy: 'Last edit:',
+        logAdd: (q) => `Added the item (qty ${q})`,
+        logQtyUp: (a, b) => `Increased quantity from ${a} to ${b}`,
+        logQtyDown: (a, b) => `Decreased quantity from ${a} to ${b}`,
+        logEdit: (f) => `Edited: ${f}`,
+        logDispose: (q, r) => `Disposed ${q} (${r} left)`,
+        logRestore: (q) => `Restored ${q} from disposal history`,
+        field_name: 'name', field_barcode: 'barcode', field_category: 'category', field_expiryDate: 'expiry date',
+        field_alertDays: 'alert days', field_entryDate: 'entry date', field_image: 'image',
+        // Scanner
+        scanHintAim: 'Hold the camera steady so the barcode is clear and well lit',
+        scanVerifying: (a, b) => `Verifying read... (${a}/${b})`,
+        scanRejected: 'Unclear read — ignored. Move closer and hold steady',
+        scanOk: '✅ Read successfully',
+        barcodeBad: '⚠️ Number fails the check-digit test — it may be wrong, please review.'
     }
 };
 
 const STORAGE_KEYS = {
     BATCHES: 'sm_expiry_batches_v1', CATALOG: 'sm_product_catalog_v1',
     INIT: 'sm_initialized_v1', LANG: 'sm_lang', THEME: 'sm_theme',
-    FILTERS: 'sm_filters', FORM_DRAFT: 'sm_form_draft', SHOP: 'sm_shop_id'
+    FILTERS: 'sm_filters', FORM_DRAFT: 'sm_form_draft', SHOP: 'sm_shop_id',
+    USERS: 'sm_users_v1', HISTORY: 'sm_history_v1', SESSION: 'sm_session_user'
 };
 
 const PER_PAGE = 50;
@@ -809,6 +1058,17 @@ let legacyLocal = { batches: [], catalog: {} };
 let migrationChecked = false;
 let syncState = 'local';
 
+// ===== المستخدمون وسجل التصريف =====
+let usersMap = {};        // id -> {id,name,phone,photo}  (للعرض فقط)
+let localUsers = {};      // الوضع المحلي (يتضمن بيانات الاعتماد المشفّرة)
+let histRecs = [];
+let currentUser = null;
+let regPhoto = '';
+let authMode = 'login';
+let historyShown = 50;
+let disposeTargetId = null;
+const HISTORY_PAGE = 50;
+
 function t(key, ...args) {
     const dict = I18N[currentLang] || I18N.ar;
     const val = dict[key];
@@ -820,11 +1080,14 @@ window.onload = function() {
     loadPreferences();
     initShopId();
     cloudEnabled = isConfigFilled() && typeof firebase !== 'undefined';
+    loadLocalUsers();
     if (cloudEnabled) {
         readLegacyLocal();
-        batches = []; catalog = {};
+        batches = []; catalog = {}; histRecs = [];
     } else {
         loadData();
+        loadHistoryLocal();
+        usersMap = publicUsers(localUsers);
     }
     applyLanguage();
     applyTheme();
@@ -833,6 +1096,7 @@ window.onload = function() {
     renderBatches();
     triggerAlertCheck(false);
     bindFormDraft();
+    initAuth();
     if (cloudEnabled) initCloud(); else updateSyncBadge('local');
 };
 
@@ -874,11 +1138,15 @@ function initCloud() {
         const base = shopRef();
         base.collection('batches').onSnapshot(onBatchesSnapshot, onSyncError);
         base.collection('catalog').onSnapshot(onCatalogSnapshot, onSyncError);
+        base.collection('users').onSnapshot(onUsersSnapshot, onSyncError);
+        base.collection('history').orderBy('at', 'desc').limit(1000).onSnapshot(onHistorySnapshot, onSyncError);
         updateSyncBadge('offline');
     } catch (e) {
         console.error(e);
         cloudEnabled = false;
         loadData();
+        loadHistoryLocal();
+        usersMap = publicUsers(localUsers);
         renderBatches();
         updateSyncBadge('error');
     }
@@ -1020,6 +1288,7 @@ function applyLanguage() {
     document.documentElement.lang = currentLang;
     document.documentElement.dir = currentLang === 'ar' ? 'rtl' : 'ltr';
     document.getElementById('langLabel').textContent = currentLang === 'ar' ? 'EN' : 'AR';
+    const l2 = document.getElementById('langLabel2'); if (l2) l2.textContent = currentLang === 'ar' ? 'EN' : 'AR';
     document.querySelectorAll('[data-i18n]').forEach(el => {
         const key = el.dataset.i18n;
         if (I18N[currentLang][key] && typeof I18N[currentLang][key] === 'string') el.textContent = I18N[currentLang][key];
@@ -1036,6 +1305,8 @@ function applyLanguage() {
     updateSyncBadge();
     refreshCloudStatusText();
     renderBatches();
+    renderUserBar(); renderHistoryCount();
+    if (!document.getElementById('historyModal').classList.contains('hidden')) renderHistory();
     updateDaysPreview();
 }
 
@@ -1332,6 +1603,12 @@ function renderBatchCard(item) {
               ${t('entryDate')} ${item.entryDate}
            </span>`
         : '';
+    const lastEditHtml = item.updatedBy
+        ? `<button onclick="event.stopPropagation(); openProductDetail('${item.id}')" class="mt-1.5 flex items-center gap-1.5 text-[11px] font-bold text-slate-500 max-w-full">
+              ${avatarHtml(item.updatedBy.id, item.updatedBy.name, 18)}
+              <span class="truncate">${t('lastEditBy')} ${escapeHtml(userName(item.updatedBy.id, item.updatedBy.name))} · ${formatDateTime(item.updatedAt)}</span>
+           </button>`
+        : '';
     return `
     <div class="${item.status.cardBg} ${item.status.cardBorder} border rounded-3xl p-3.5 shadow-xs transition">
         <div class="flex gap-3">
@@ -1350,6 +1627,7 @@ function renderBatchCard(item) {
                     <i data-lucide="calendar" class="w-3.5 h-3.5 text-slate-400"></i>
                     <span>${t('expiryDate')} <span dir="ltr" class="font-extrabold">${item.expiryDate}</span></span>
                 </div>
+                ${lastEditHtml}
             </div>
         </div>
         <div class="mt-3 pt-2.5 border-t border-slate-200/80 flex items-center justify-between gap-2 flex-wrap">
@@ -1421,6 +1699,7 @@ function openProductDetail(batchId) {
                     <div class="text-xs font-extrabold text-sky-900" dir="ltr">${item.entryDate || '—'}</div>
                 </div>
             </div>
+            ${renderActivityLog(item)}
             <div class="flex gap-2 pt-1">
                 <button onclick="closeProductDetail(); openEditModal('${item.id}')" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5 active:scale-95 transition">
                     <i data-lucide="pencil" class="w-4 h-4"></i>
@@ -1569,21 +1848,129 @@ function clearSearch() {
     renderBatches();
 }
 
+// ==========================================
+// الماسح: فحص الخانة الأخيرة + اشتراط تكرار القراءة + رفض القراءات غير الواضحة
+// ==========================================
+let scanState = { code: '', count: 0, lastTs: 0, done: false };
+
+function gtinCheckOk(code) {
+    if (!/^\d+$/.test(code) || ![8, 12, 13].includes(code.length)) return false;
+    const d = code.split('').map(Number);
+    const check = d.pop();
+    let sum = 0;
+    for (let i = d.length - 1, w = 3; i >= 0; i--, w = (w === 3 ? 1 : 3)) sum += d[i] * w;
+    return ((10 - (sum % 10)) % 10) === check;
+}
+
+function upcEtoA(e) {
+    const ns = e[0], chk = e[7], d = e.slice(1, 7).split(''), last = d[5];
+    let body;
+    if ('012'.includes(last)) body = ns + d[0] + d[1] + last + '0000' + d[2] + d[3] + d[4];
+    else if (last === '3') body = ns + d[0] + d[1] + d[2] + '00000' + d[3] + d[4];
+    else if (last === '4') body = ns + d[0] + d[1] + d[2] + d[3] + '00000' + d[4];
+    else body = ns + d[0] + d[1] + d[2] + d[3] + d[4] + '0000' + last;
+    return body + chk;
+}
+
+// يعيد true إذا كان الرقم (للإدخال اليدوي) شكله باركود قياسي لكن خانته الأخيرة خاطئة
+function gtinInvalid(code) {
+    if (!/^\d+$/.test(code)) return false;
+    if (code.length === 8) return !(gtinCheckOk(code) || gtinCheckOk(upcEtoA(code)));
+    if (code.length === 12 || code.length === 13) return !gtinCheckOk(code);
+    return false;
+}
+
+function updateBarcodeHint(code) {
+    const el = document.getElementById('barcodeHint');
+    if (!el) return;
+    if (code && gtinInvalid(code)) { el.textContent = t('barcodeBad'); el.classList.remove('hidden'); }
+    else el.classList.add('hidden');
+}
+
+function evaluateScan(text, fmt) {
+    const code = String(text || '').trim();
+    const f = String(fmt || '').toUpperCase();
+    if (!code) return { ok: false };
+    if (/EAN|UPC/.test(f)) {
+        if (!/^\d+$/.test(code)) return { ok: false };
+        if (f.includes('UPC_E') || f.includes('UPCE')) return (code.length === 8 && gtinCheckOk(upcEtoA(code))) ? { ok: true, need: 2 } : { ok: false };
+        return gtinCheckOk(code) ? { ok: true, need: 2 } : { ok: false };
+    }
+    if (!f && /^(\d{8}|\d{12,13})$/.test(code)) return gtinCheckOk(code) ? { ok: true, need: 2 } : { ok: false };
+    if (/QR|DATA_MATRIX|AZTEC/.test(f)) return { ok: true, need: 2 };
+    if (code.length < 4) return { ok: false };
+    if (f.includes('CODE_128')) return { ok: true, need: 3 };
+    return { ok: true, need: 4 };   // CODE_39 / ITF / CODABAR ... بلا فحص رقمي: نطلب تكراراً أكثر
+}
+
+function setScanStatus(msg, cls) {
+    const el = document.getElementById('scanStatus');
+    if (!el) return;
+    el.textContent = msg || '';
+    el.className = 'text-center text-[11px] font-bold mt-2 scan-' + (cls || 'info');
+}
+
+function onScanFrame(text, decodedResult) {
+    if (scanState.done) return;
+    let fmt = '';
+    try {
+        const f = decodedResult && decodedResult.result && decodedResult.result.format;
+        fmt = (f && (f.formatName || f.format)) || '';
+    } catch (e) {}
+    const ev = evaluateScan(text, fmt);
+    if (!ev.ok) { scanState.code = ''; scanState.count = 0; setScanStatus(t('scanRejected'), 'warn'); return; }
+    const code = String(text).trim();
+    const now = Date.now();
+    if (code === scanState.code && now - scanState.lastTs < 1500) scanState.count++;
+    else { scanState.code = code; scanState.count = 1; }
+    scanState.lastTs = now;
+    if (scanState.count >= ev.need) {
+        scanState.done = true;
+        setScanStatus(t('scanOk'), 'ok');
+        try { if (navigator.vibrate) navigator.vibrate(60); } catch (e) {}
+        handleScanAccepted(code);
+    } else {
+        setScanStatus(t('scanVerifying', scanState.count, ev.need), 'info');
+    }
+}
+
+function handleScanAccepted(decodedText) {
+    playBeep(); stopScanner();
+    if (scannerMode === 'search') {
+        const searchInput = document.getElementById('searchInput');
+        searchInput.value = decodedText; currentPage = 1; saveFilters(); renderBatches();
+        const resultsCount = batches.filter(b => b.name.toLowerCase().includes(decodedText.toLowerCase()) || (b.barcode && b.barcode.toLowerCase().includes(decodedText.toLowerCase()))).length;
+        if (resultsCount > 0) showToast(`✅ ${currentLang === 'ar' ? 'تم العثور على' : 'Found'} ${resultsCount} ${currentLang === 'ar' ? 'صنف' : 'items'}`, 'success');
+        else showToast(`⚠️ ${currentLang === 'ar' ? 'لا توجد نتائج للباركود:' : 'No results for:'} ${decodedText}`, 'warning');
+    } else {
+        document.getElementById('inputBarcode').value = decodedText;
+        handleBarcodeLookup(decodedText);
+        saveFormDraft();
+        if (catalog[decodedText]) showToast(currentLang === 'ar' ? '✅ تم التعرف على المنتج!' : '✅ Product recognized!', 'success');
+        else showToast(currentLang === 'ar' ? '⚠️ منتج جديد، أدخل البيانات' : '⚠️ New product, enter details', 'warning');
+    }
+}
+
 function startScanner(mode) {
     scannerMode = mode;
+    scanState = { code: '', count: 0, lastTs: 0, done: false };
     const modal = document.getElementById('scannerModal');
     const errorEl = document.getElementById('scannerError');
     errorEl.classList.add('hidden');
     modal.classList.remove('hidden');
     document.getElementById('scannerTitle').textContent = mode === 'search' ? t('scannerSearchTitle') : t('scannerAddTitle');
+    setScanStatus(t('scanHintAim'), 'info');
     lucide.createIcons();
 
-    try {
-        html5QrcodeScanner = new Html5Qrcode("reader");
-        const config = {
-            fps: 15,
-            qrbox: function(w, h) { const m = Math.min(w, h); const s = Math.floor(m * 0.75); return { width: s, height: s }; },
-            aspectRatio: 1.0, disableFlip: false,
+    const launch = (hiRes) => {
+        const cfg = {
+            fps: 12,
+            qrbox: function(vw, vh) { return { width: Math.max(50, Math.floor(vw * 0.85)), height: Math.max(50, Math.floor(Math.min(vh * 0.8, vw * 0.6))) }; },
+            disableFlip: false
+        };
+        if (hiRes) cfg.videoConstraints = { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 }, advanced: [{ focusMode: 'continuous' }] };
+        html5QrcodeScanner = new Html5Qrcode("reader", {
+            verbose: false,
             experimentalFeatures: { useBarCodeDetectorIfSupported: true },
             formatsToSupport: [
                 Html5QrcodeSupportedFormats.QR_CODE, Html5QrcodeSupportedFormats.EAN_13,
@@ -1592,38 +1979,34 @@ function startScanner(mode) {
                 Html5QrcodeSupportedFormats.UPC_E, Html5QrcodeSupportedFormats.ITF,
                 Html5QrcodeSupportedFormats.CODABAR, Html5QrcodeSupportedFormats.DATA_MATRIX
             ]
-        };
-        html5QrcodeScanner.start({ facingMode: "environment" }, config,
-            (decodedText) => {
-                playBeep(); stopScanner();
-                if (scannerMode === 'search') {
-                    const searchInput = document.getElementById('searchInput');
-                    searchInput.value = decodedText; currentPage = 1; saveFilters(); renderBatches();
-                    const resultsCount = batches.filter(b => b.name.toLowerCase().includes(decodedText.toLowerCase()) || (b.barcode && b.barcode.toLowerCase().includes(decodedText.toLowerCase()))).length;
-                    if (resultsCount > 0) showToast(`✅ ${currentLang === 'ar' ? 'تم العثور على' : 'Found'} ${resultsCount} ${currentLang === 'ar' ? 'صنف' : 'items'}`, 'success');
-                    else showToast(`⚠️ ${currentLang === 'ar' ? 'لا توجد نتائج للباركود:' : 'No results for:'} ${decodedText}`, 'warning');
-                } else {
-                    document.getElementById('inputBarcode').value = decodedText;
-                    handleBarcodeLookup(decodedText);
-                    saveFormDraft();
-                    if (catalog[decodedText]) showToast(currentLang === 'ar' ? '✅ تم التعرف على المنتج!' : '✅ Product recognized!', 'success');
-                    else showToast(currentLang === 'ar' ? '⚠️ منتج جديد، أدخل البيانات' : '⚠️ New product, enter details', 'warning');
-                }
-            },
-            (errorMessage) => {}
-        ).catch((err) => { console.error(err); errorEl.textContent = t('cameraError'); errorEl.classList.remove('hidden'); });
+        });
+        return html5QrcodeScanner.start({ facingMode: 'environment' }, cfg, onScanFrame, () => {});
+    };
+
+    try {
+        launch(true).catch(() => {
+            // إعادة المحاولة بإعدادات كاميرا أبسط إن لم يدعم الجهاز الدقة العالية
+            try { if (html5QrcodeScanner) html5QrcodeScanner.clear(); } catch (e) {}
+            html5QrcodeScanner = null;
+            if (modal.classList.contains('hidden')) return;
+            return launch(false);
+        }).catch((err) => { console.error(err); html5QrcodeScanner = null; errorEl.textContent = t('cameraError'); errorEl.classList.remove('hidden'); });
     } catch (e) { console.error(e); errorEl.textContent = t('cameraNotSupported'); errorEl.classList.remove('hidden'); }
 }
 
 function stopScanner() {
+    scanState.done = true;
     document.getElementById('scannerModal').classList.add('hidden');
     if (html5QrcodeScanner) {
-        html5QrcodeScanner.stop().then(() => { html5QrcodeScanner.clear(); html5QrcodeScanner = null; }).catch(() => { html5QrcodeScanner = null; });
+        const sc = html5QrcodeScanner;
+        html5QrcodeScanner = null;
+        sc.stop().then(() => { sc.clear(); }).catch(() => {});
     }
 }
 
 function handleBarcodeLookup(barcode) {
     const cleanCode = barcode.trim();
+    updateBarcodeHint(cleanCode);
     const banner = document.getElementById('autoFillBanner');
     if (document.getElementById('editBatchId').value) return;
     if (cleanCode && catalog[cleanCode]) {
@@ -1727,6 +2110,7 @@ function updateDaysPreview() {
 
 function saveBatch(e) {
     e.preventDefault();
+    if (!requireUser()) return;
     const editId = document.getElementById('editBatchId').value;
     const barcode = document.getElementById('inputBarcode').value.trim();
     const name = document.getElementById('inputName').value.trim();
@@ -1740,7 +2124,18 @@ function saveBatch(e) {
     if (editId) {
         const idx = batches.findIndex(b => b.id === editId);
         if (idx !== -1) {
-            batches[idx] = { ...batches[idx], barcode, name, category, expiryDate, qty, alertDays, entryDate, image: currentCompressedImage };
+            const old = batches[idx];
+            const changed = [];
+            if ((old.name || '') !== name) changed.push('name');
+            if ((old.barcode || '') !== barcode) changed.push('barcode');
+            if (old.category !== category) changed.push('category');
+            if (old.expiryDate !== expiryDate) changed.push('expiryDate');
+            if (parseInt(old.alertDays) !== alertDays) changed.push('alertDays');
+            if ((old.entryDate || '') !== entryDate) changed.push('entryDate');
+            if ((old.image || '') !== (currentCompressedImage || '')) changed.push('image');
+            batches[idx] = { ...old, barcode, name, category, expiryDate, qty, alertDays, entryDate, image: currentCompressedImage };
+            if (old.qty !== qty) pushLog(batches[idx], 'qty', { from: old.qty, to: qty });
+            if (changed.length) pushLog(batches[idx], 'edit', { c: changed });
             if (barcode) {
                 catalog[barcode] = { name, category, image: currentCompressedImage, alertDays };
                 cloudSetCatalog(barcode, catalog[barcode]);
@@ -1750,7 +2145,8 @@ function saveBatch(e) {
             showToast(t('editSuccess'), 'success');
         }
     } else {
-        const newBatch = { id: 'batch-' + Date.now() + '-' + Math.floor(Math.random() * 1000), barcode, name, category, expiryDate, qty, alertDays, entryDate, image: currentCompressedImage };
+        const newBatch = { id: 'batch-' + Date.now() + '-' + Math.floor(Math.random() * 1000), barcode, name, category, expiryDate, qty, alertDays, entryDate, image: currentCompressedImage, createdBy: actor(), createdAt: nowIso(), log: [] };
+        pushLog(newBatch, 'add', { qty });
         batches.push(newBatch);
         if (barcode) {
             catalog[barcode] = { name, category, image: currentCompressedImage, alertDays };
@@ -1762,27 +2158,593 @@ function saveBatch(e) {
     }
 }
 
+// ==========================================
+// الكمية والتصريف + سجل النشاط (من عدّل ومتى)
+// ==========================================
+function nowIso() { return new Date().toISOString(); }
+function actor() { return { id: currentUser.id, name: currentUser.name }; }
+function requireUser() { if (currentUser) return true; updateAuthVisibility(); return false; }
+function getVal(id) { const el = document.getElementById(id); return el ? el.value : ''; }
+
+function userName(id, fallback) { return (usersMap[id] && usersMap[id].name) || fallback || '—'; }
+
+function avatarHtml(id, name, size) {
+    size = size || 24;
+    const u = usersMap[id];
+    const photo = u && u.photo;
+    const nm = (u && u.name) || name || '?';
+    if (photo) return `<img src="${escapeHtml(photo)}" alt="" class="avatar" style="width:${size}px;height:${size}px">`;
+    const ch = (String(nm).trim()[0] || '?').toUpperCase();
+    return `<span class="avatar-fallback" style="width:${size}px;height:${size}px;font-size:${Math.round(size * 0.45)}px">${escapeHtml(ch)}</span>`;
+}
+
+function formatDateTime(iso) {
+    if (!iso) return '';
+    try {
+        return new Date(iso).toLocaleString(currentLang === 'ar' ? 'ar-EG' : 'en-US', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    } catch (e) { return iso; }
+}
+
+// تسجيل عملية على الدفعة (مع دمج تعديلات الكمية المتتالية من نفس الشخص خلال دقيقة)
+function pushLog(b, action, extra) {
+    const me = actor(); const ts = nowIso();
+    b.log = Array.isArray(b.log) ? b.log : [];
+    const last = b.log[b.log.length - 1];
+    if (action === 'qty' && last && last.a === 'qty' && last.u === me.id && (Date.parse(ts) - Date.parse(last.t)) < 60000) {
+        last.to = extra.to; last.t = ts;
+        if (last.from === last.to) b.log.pop();
+    } else {
+        b.log.push({ a: action, u: me.id, n: me.name, t: ts, ...extra });
+    }
+    if (b.log.length > 40) b.log = b.log.slice(-40);
+    b.updatedBy = me; b.updatedAt = ts;
+}
+
+function logText(en) {
+    switch (en.a) {
+        case 'add': return t('logAdd', en.qty);
+        case 'qty': return en.to > en.from ? t('logQtyUp', en.from, en.to) : t('logQtyDown', en.from, en.to);
+        case 'edit': return t('logEdit', (en.c || []).map(k => t('field_' + k)).join(currentLang === 'ar' ? '، ' : ', '));
+        case 'dispose': return t('logDispose', en.qty, en.to);
+        case 'restore': return t('logRestore', en.qty);
+    }
+    return '';
+}
+
+function renderActivityLog(item) {
+    const log = (Array.isArray(item.log) ? item.log : []).slice().reverse();
+    if (!log.length) return '';
+    return `
+    <div class="bg-slate-50 border border-slate-200 rounded-2xl p-3">
+        <div class="text-[11px] font-extrabold text-slate-700 mb-2 flex items-center gap-1.5">
+            <i data-lucide="clock" class="w-3.5 h-3.5 text-emerald-600"></i>${t('activityLog')}
+        </div>
+        <div class="space-y-2 max-h-56 overflow-y-auto">
+            ${log.map(en => `
+            <div class="log-row ps-2.5 flex items-start gap-2">
+                ${avatarHtml(en.u, en.n, 22)}
+                <div class="min-w-0">
+                    <div class="text-[11px] font-bold text-slate-800 break-words"><b>${escapeHtml(userName(en.u, en.n))}</b> · ${escapeHtml(logText(en))}</div>
+                    <div class="text-[10px] text-slate-500">${formatDateTime(en.t)}</div>
+                </div>
+            </div>`).join('')}
+        </div>
+    </div>`;
+}
+
 function updateBatchQty(id, delta) {
+    if (!requireUser()) return;
     const idx = batches.findIndex(b => b.id === id);
     if (idx === -1) return;
-    const newQty = batches[idx].qty + delta;
-    if (newQty <= 0) disposeBatch(id);
-    else {
-        batches[idx].qty = newQty;
-        cloudSetBatch(batches[idx]);
-        saveData(); renderBatches();
+    const oldQty = batches[idx].qty;
+    const newQty = oldQty + delta;
+    if (newQty <= 0) { disposeBatch(id); return; }
+    batches[idx].qty = newQty;
+    pushLog(batches[idx], 'qty', { from: oldQty, to: newQty });
+    cloudSetBatch(batches[idx]);
+    saveData(); renderBatches();
+}
+
+// ---------- التصريف ----------
+function disposeBatch(id) {
+    if (!requireUser()) return;
+    const item = batches.find(b => b.id === id);
+    if (!item) return;
+    disposeTargetId = id;
+    document.getElementById('disposeName').textContent = item.name;
+    const inp = document.getElementById('disposeQty');
+    inp.max = item.qty; inp.value = item.qty;
+    document.getElementById('disposeMax').textContent = item.qty;
+    document.getElementById('disposeModal').classList.remove('hidden');
+    lucide.createIcons();
+}
+
+function closeDisposeModal() {
+    document.getElementById('disposeModal').classList.add('hidden');
+    disposeTargetId = null;
+}
+
+function adjustDisposeQty(d) {
+    const item = batches.find(b => b.id === disposeTargetId);
+    const max = item ? item.qty : 1;
+    const inp = document.getElementById('disposeQty');
+    inp.value = Math.min(max, Math.max(1, (parseInt(inp.value) || 1) + d));
+}
+
+function confirmDispose() {
+    if (!requireUser()) return;
+    const item = batches.find(b => b.id === disposeTargetId);
+    if (!item) { closeDisposeModal(); return; }
+    let n = parseInt(document.getElementById('disposeQty').value) || 1;
+    n = Math.min(Math.max(1, n), item.qty);
+    const st = getBatchStatus(item);
+    const rec = {
+        id: 'h-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+        batchId: item.id, barcode: item.barcode || '', name: item.name, category: item.category,
+        image: item.image || '', expiryDate: item.expiryDate, entryDate: item.entryDate || '',
+        alertDays: item.alertDays, qty: n, totalQty: item.qty, st: st.key,
+        by: actor(), at: nowIso(),
+        createdBy: item.createdBy || null, createdAt: item.createdAt || '', log: Array.isArray(item.log) ? item.log : []
+    };
+    addHistory(rec);
+    if (n >= item.qty) {
+        batches = batches.filter(b => b.id !== item.id);
+        cloudDeleteBatch(item.id);
+    } else {
+        const before = item.qty;
+        item.qty = before - n;
+        pushLog(item, 'dispose', { qty: n, from: before, to: item.qty });
+        cloudSetBatch(item);
+    }
+    saveData(); renderBatches(); closeDisposeModal();
+    showToast(t('disposeSuccess', n), 'success');
+}
+
+// ---------- سجل التصريف ----------
+function saveHistoryLocal() {
+    if (cloudEnabled) return;
+    try { localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(histRecs)); } catch (e) { showToast(t('storageError'), 'error'); }
+}
+function loadHistoryLocal() {
+    try { histRecs = JSON.parse(localStorage.getItem(STORAGE_KEYS.HISTORY) || '[]') || []; } catch (e) { histRecs = []; }
+    renderHistoryCount();
+}
+function cloudSetHistory(rec) {
+    if (!cloudEnabled || !db) return;
+    shopRef().collection('history').doc(rec.id).set(clean(rec)).catch(onWriteError);
+}
+function cloudDeleteHistory(id) {
+    if (!cloudEnabled || !db) return;
+    shopRef().collection('history').doc(id).delete().catch(onWriteError);
+}
+function addHistory(rec) {
+    histRecs.unshift(rec);
+    saveHistoryLocal(); cloudSetHistory(rec); renderHistoryCount();
+    if (!document.getElementById('historyModal').classList.contains('hidden')) renderHistory();
+}
+function mergeHistory(arr) {
+    const have = new Set(histRecs.map(h => h.id));
+    arr.forEach(h => {
+        if (h && h.id && h.name && h.at && !have.has(h.id)) { histRecs.push(h); cloudSetHistory(h); have.add(h.id); }
+    });
+    histRecs.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+    saveHistoryLocal(); renderHistoryCount();
+}
+function onHistorySnapshot(snap) {
+    const arr = [];
+    snap.forEach(d => arr.push(d.data()));
+    histRecs = arr;
+    renderHistoryCount();
+    if (!document.getElementById('historyModal').classList.contains('hidden')) renderHistory();
+}
+function renderHistoryCount() {
+    const el = document.getElementById('historyCount');
+    if (!el) return;
+    el.textContent = histRecs.length;
+    el.classList.toggle('hidden', histRecs.length === 0);
+}
+
+function openHistoryModal() {
+    if (!requireUser()) return;
+    historyShown = HISTORY_PAGE;
+    document.getElementById('historyModal').classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+    renderHistory();
+}
+function closeHistoryModal() {
+    document.getElementById('historyModal').classList.add('hidden');
+    document.body.style.overflow = '';
+}
+function onHistoryFilter() { historyShown = HISTORY_PAGE; renderHistory(); }
+function showMoreHistory() { historyShown += HISTORY_PAGE; renderHistory(); }
+function setHistoryUser(id) {
+    const sel = document.getElementById('hUser');
+    sel.value = (sel.value === id) ? 'all' : id;
+    onHistoryFilter();
+}
+
+function renderHistory() {
+    const sel = document.getElementById('hUser');
+    const prev = sel.value || 'all';
+    const seen = {};
+    histRecs.forEach(h => { if (h.by && h.by.id) seen[h.by.id] = userName(h.by.id, h.by.name); });
+    sel.innerHTML = `<option value="all">${t('histAllUsers')}</option>` +
+        Object.entries(seen).map(([id, n]) => `<option value="${escapeHtml(id)}">${escapeHtml(n)}</option>`).join('');
+    sel.value = seen[prev] ? prev : 'all';
+
+    const userSel = sel.value;
+    const period = getVal('hPeriod') || 'all';
+    const q = getVal('hSearch').trim().toLowerCase();
+    let lim = 0;
+    if (period === 'today') { const d = new Date(); d.setHours(0, 0, 0, 0); lim = d.getTime(); }
+    else if (period === '7') lim = Date.now() - 7 * 864e5;
+    else if (period === '30') lim = Date.now() - 30 * 864e5;
+
+    const base = histRecs.filter(h =>
+        (!q || (h.name || '').toLowerCase().includes(q) || (h.barcode || '').toLowerCase().includes(q)) &&
+        (!lim || Date.parse(h.at) >= lim));
+    const list = userSel === 'all' ? base : base.filter(h => h.by && h.by.id === userSel);
+
+    const totalQty = list.reduce((s, h) => s + (parseInt(h.qty) || 0), 0);
+    document.getElementById('historySummary').innerHTML = `
+        <div class="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 text-center">
+            <div class="text-xl font-extrabold text-emerald-700">${list.length}</div>
+            <div class="text-[11px] font-bold text-emerald-800">${t('histTotalOps')}</div>
+        </div>
+        <div class="bg-sky-50 border border-sky-200 rounded-2xl p-3 text-center">
+            <div class="text-xl font-extrabold text-sky-700">${totalQty}</div>
+            <div class="text-[11px] font-bold text-sky-800">${t('histTotalQty')}</div>
+        </div>`;
+
+    const perUser = {};
+    base.forEach(h => {
+        if (!h.by) return;
+        const k = h.by.id;
+        if (!perUser[k]) perUser[k] = { id: k, name: h.by.name, qty: 0 };
+        perUser[k].qty += parseInt(h.qty) || 0;
+    });
+    document.getElementById('historyUserChips').innerHTML = Object.values(perUser).sort((a, b) => b.qty - a.qty).map(u => `
+        <button onclick="setHistoryUser('${escapeHtml(u.id)}')" class="flex items-center gap-1.5 ${userSel === u.id ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-700'} text-[11px] font-bold ps-1 pe-2.5 py-1 rounded-full active:scale-95 transition">
+            ${avatarHtml(u.id, u.name, 22)}
+            <span>${escapeHtml(userName(u.id, u.name))}</span>
+            <b>${u.qty}</b>
+        </button>`).join('');
+
+    const listEl = document.getElementById('historyList');
+    if (list.length === 0) {
+        listEl.innerHTML = `<div class="text-center py-10 text-xs font-bold text-slate-500">${t('histEmpty')}</div>`;
+    } else {
+        listEl.innerHTML = list.slice(0, historyShown).map(h => {
+            const thumb = h.image
+                ? `<img src="${escapeHtml(h.image)}" alt="" onclick="openImageSrc(this.src)" class="product-thumb w-12 h-12 rounded-xl object-cover border border-slate-200 shrink-0 bg-slate-100">`
+                : `<div class="w-12 h-12 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 text-slate-400"><i data-lucide="package" class="w-5 h-5"></i></div>`;
+            const stChip = h.st === 'expired'
+                ? `<span class="text-[10px] font-extrabold bg-red-100 text-red-700 px-2 py-0.5 rounded-md">${t('histExpired')}</span>`
+                : `<span class="text-[10px] font-extrabold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md">${t('histEarly')}</span>`;
+            return `
+            <div class="bg-white border border-slate-200 rounded-2xl p-3 flex gap-3">
+                ${thumb}
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-start justify-between gap-2">
+                        <div class="font-extrabold text-sm text-slate-900 break-words">${escapeHtml(h.name)}</div>
+                        <span class="bg-slate-900 text-white text-[11px] font-extrabold px-2 py-0.5 rounded-lg whitespace-nowrap">× ${h.qty}</span>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-1.5 mt-1">
+                        <span class="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md">${getCategoryLabel(h.category)}</span>
+                        ${stChip}
+                        ${h.barcode ? `<span class="text-[10px] font-mono bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md">${escapeHtml(h.barcode)}</span>` : ''}
+                    </div>
+                    <div class="flex items-center gap-1.5 mt-1.5 text-[11px] font-bold text-slate-600">
+                        ${h.by ? avatarHtml(h.by.id, h.by.name, 20) : ''}
+                        <span class="truncate">${t('histBy')}: ${h.by ? escapeHtml(userName(h.by.id, h.by.name)) : '—'} · ${formatDateTime(h.at)}</span>
+                    </div>
+                    <button onclick="restoreFromHistory('${h.id}')" class="mt-2 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg flex items-center gap-1 active:scale-95 transition">
+                        <i data-lucide="undo-2" class="w-3.5 h-3.5"></i>${t('histRestore')}
+                    </button>
+                </div>
+            </div>`;
+        }).join('');
+    }
+    document.getElementById('historyMore').classList.toggle('hidden', list.length <= historyShown);
+    lucide.createIcons();
+}
+
+function restoreFromHistory(hid) {
+    if (!requireUser()) return;
+    const rec = histRecs.find(h => h.id === hid);
+    if (!rec) return;
+    openConfirmDialog(t('restoreTitle'), t('restoreMsg', rec.name, rec.qty), () => {
+        const ex = batches.find(b => b.id === rec.batchId);
+        if (ex) {
+            const before = ex.qty;
+            ex.qty = before + rec.qty;
+            pushLog(ex, 'restore', { qty: rec.qty, from: before, to: ex.qty });
+            cloudSetBatch(ex);
+        } else {
+            const nb = {
+                id: rec.batchId, barcode: rec.barcode || '', name: rec.name, category: rec.category,
+                expiryDate: rec.expiryDate, qty: rec.qty, alertDays: rec.alertDays || 7, image: rec.image || '',
+                entryDate: rec.entryDate || todayStr(), createdBy: rec.createdBy || rec.by || actor(),
+                createdAt: rec.createdAt || nowIso(), log: Array.isArray(rec.log) ? rec.log.slice() : []
+            };
+            pushLog(nb, 'restore', { qty: rec.qty });
+            batches.push(nb);
+            cloudSetBatch(nb);
+        }
+        histRecs = histRecs.filter(h => h.id !== hid);
+        cloudDeleteHistory(hid);
+        saveHistoryLocal(); saveData(); renderBatches(); renderHistory(); renderHistoryCount();
+        showToast(t('restoreSuccess'), 'success');
+    });
+}
+
+function prepareHistoryExport() {
+    const ar = currentLang === 'ar';
+    return histRecs.map(h => ({
+        [ar ? 'الباركود' : 'Barcode']: h.barcode || '',
+        [ar ? 'اسم الصنف' : 'Product Name']: h.name,
+        [ar ? 'القسم' : 'Category']: getCategoryLabel(h.category),
+        [ar ? 'الكمية المصرّفة' : 'Qty Disposed']: h.qty,
+        [ar ? 'تاريخ الانتهاء' : 'Expiry Date']: h.expiryDate,
+        [ar ? 'الحالة وقت التصريف' : 'State at disposal']: h.st === 'expired' ? t('histExpired') : t('histEarly'),
+        [ar ? 'صرّفها' : 'Disposed By']: h.by ? userName(h.by.id, h.by.name) : '',
+        [ar ? 'وقت التصريف' : 'Disposed At']: formatDateTime(h.at)
+    }));
+}
+
+// ==========================================
+// الحسابات (تسجيل / دخول)
+// ==========================================
+function onUsersSnapshot(snap) {
+    const m = {};
+    snap.forEach(d => { const v = d.data(); m[d.id] = { id: d.id, name: v.name, phone: v.phone, photo: v.photo || '' }; });
+    usersMap = m;
+    if (currentUser) {
+        if (usersMap[currentUser.id]) { currentUser = { ...usersMap[currentUser.id] }; persistSession(); }
+        else if (!snap.metadata.fromCache) { doLogout(true); return; }
+    }
+    renderUserBar(); renderBatches();
+    if (!document.getElementById('historyModal').classList.contains('hidden')) renderHistory();
+}
+
+function loadLocalUsers() {
+    try { localUsers = JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS) || '{}') || {}; } catch (e) { localUsers = {}; }
+}
+function saveLocalUsers() {
+    try { localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(localUsers)); } catch (e) { showToast(t('storageError'), 'error'); }
+}
+function publicUsers(src) {
+    const m = {};
+    Object.values(src).forEach(u => { m[u.id] = { id: u.id, name: u.name, phone: u.phone, photo: u.photo || '' }; });
+    return m;
+}
+
+function normalizePhone(s) {
+    return String(s || '')
+        .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
+        .replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d))
+        .replace(/\D/g, '');
+}
+function randomSalt() {
+    const a = new Uint8Array(16);
+    (window.crypto || window.msCrypto).getRandomValues(a);
+    return Array.from(a).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+function simpleHash(str) {
+    let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+    for (let i = 0; i < str.length; i++) { const ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16);
+}
+async function hashPassword(salt, pw) {
+    const s = salt + ':' + pw;
+    try { return await sha256Hex(s); } catch (e) { return 'x' + simpleHash(s); }
+}
+function withTimeout(p, ms) {
+    return Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
+}
+
+async function fetchProfile(id) {
+    if (cloudEnabled && db) {
+        const d = await shopRef().collection('users').doc(id).get();
+        if (!d.exists) return null;
+        const v = d.data();
+        return { id, name: v.name, phone: v.phone, photo: v.photo || '' };
+    }
+    const u = localUsers[id];
+    return u ? { id: u.id, name: u.name, phone: u.phone, photo: u.photo || '' } : null;
+}
+async function fetchCreds(id) {
+    if (cloudEnabled && db) {
+        const d = await shopRef().collection('creds').doc(id).get();
+        return d.exists ? d.data() : null;
+    }
+    const u = localUsers[id];
+    return u ? { salt: u.salt, hash: u.hash } : null;
+}
+async function saveNewUser(prof, creds) {
+    if (cloudEnabled && db) {
+        const base = shopRef();
+        await db.runTransaction(async tx => {
+            const uRef = base.collection('users').doc(prof.id);
+            const s = await tx.get(uRef);
+            if (s.exists) throw new Error('EXISTS');
+            tx.set(uRef, clean(prof));
+            tx.set(base.collection('creds').doc(prof.id), clean(creds));
+        });
+    } else {
+        if (localUsers[prof.id]) throw new Error('EXISTS');
+        localUsers[prof.id] = { ...prof, ...creds };
+        saveLocalUsers();
+        usersMap = publicUsers(localUsers);
     }
 }
 
-function disposeBatch(id) {
-    const item = batches.find(b => b.id === id);
-    if (!item) return;
-    openConfirmDialog(t('disposeConfirmTitle'), t('disposeConfirmMsg', item.name), () => {
-        batches = batches.filter(b => b.id !== id);
-        cloudDeleteBatch(id);
-        saveData(); renderBatches();
-        showToast(t('removeSuccess'), 'success');
+function persistSession() {
+    try { localStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(currentUser)); } catch (e) {}
+}
+
+function initAuth() {
+    try {
+        const s = JSON.parse(localStorage.getItem(STORAGE_KEYS.SESSION) || 'null');
+        if (s && s.id) currentUser = s;
+    } catch (e) {}
+    if (currentUser && !cloudEnabled) {
+        currentUser = usersMap[currentUser.id] ? { ...usersMap[currentUser.id] } : null;
+    }
+    setAuthMode('login');
+    updateAuthVisibility();
+}
+
+function updateAuthVisibility() {
+    const el = document.getElementById('authScreen');
+    if (currentUser) { el.classList.add('hidden'); document.body.style.overflow = ''; }
+    else { el.classList.remove('hidden'); document.body.style.overflow = 'hidden'; }
+    renderUserBar();
+    lucide.createIcons();
+}
+
+function renderUserBar() {
+    const el = document.getElementById('userChip');
+    if (!el) return;
+    if (!currentUser) { el.innerHTML = ''; return; }
+    el.innerHTML = `${avatarHtml(currentUser.id, currentUser.name, 30)}
+        <div class="min-w-0 leading-tight">
+            <div class="text-xs font-extrabold text-white truncate">${escapeHtml(currentUser.name)}</div>
+            <div class="text-[10px] text-slate-400" dir="ltr">${escapeHtml(currentUser.phone || '')}</div>
+        </div>`;
+}
+
+function setAuthMode(mode) {
+    authMode = mode;
+    const isLogin = mode === 'login';
+    document.getElementById('loginForm').classList.toggle('hidden', !isLogin);
+    document.getElementById('registerForm').classList.toggle('hidden', isLogin);
+    document.getElementById('tabLogin').className = 'py-2.5 rounded-xl text-sm font-extrabold ' + (isLogin ? 'bg-slate-900 text-white shadow' : 'text-slate-600');
+    document.getElementById('tabRegister').className = 'py-2.5 rounded-xl text-sm font-extrabold ' + (!isLogin ? 'bg-slate-900 text-white shadow' : 'text-slate-600');
+    setAuthError('');
+}
+function setAuthError(msg) {
+    const el = document.getElementById('authError');
+    el.textContent = msg || '';
+    el.classList.toggle('hidden', !msg);
+}
+function setAuthBusy(busy) {
+    ['loginSubmit', 'registerSubmit'].forEach(id => {
+        const b = document.getElementById(id);
+        b.disabled = busy;
+        b.classList.toggle('opacity-60', busy);
     });
+}
+
+function loginAs(u) {
+    currentUser = { id: u.id, name: u.name, phone: u.phone, photo: u.photo || '' };
+    usersMap[u.id] = { ...currentUser };
+    persistSession();
+    document.getElementById('loginForm').reset();
+    resetRegForm();
+    updateAuthVisibility();
+    renderBatches();
+    showToast(t('welcomeUser', currentUser.name), 'success');
+}
+
+async function doLogin(e) {
+    e.preventDefault();
+    const phone = normalizePhone(getVal('loginPhone'));
+    const pw = getVal('loginPass');
+    setAuthError('');
+    if (!phone || !pw) { setAuthError(t('authFillAll')); return; }
+    setAuthBusy(true);
+    try {
+        const creds = await withTimeout(fetchCreds(phone), 12000);
+        if (!creds) { setAuthError(t('authBadLogin')); return; }
+        const h = await hashPassword(creds.salt, pw);
+        if (h !== creds.hash) { setAuthError(t('authBadLogin')); return; }
+        const prof = await withTimeout(fetchProfile(phone), 12000);
+        loginAs(prof || { id: phone, name: phone, phone, photo: '' });
+    } catch (err) {
+        console.error(err);
+        setAuthError(t('authNetError'));
+    } finally { setAuthBusy(false); }
+}
+
+async function doRegister(e) {
+    e.preventDefault();
+    const name = getVal('regName').trim();
+    const phone = normalizePhone(getVal('regPhone'));
+    const pw = getVal('regPass');
+    const pw2 = getVal('regPass2');
+    setAuthError('');
+    if (name.length < 2) { setAuthError(t('authNameShort')); return; }
+    if (phone.length < 6 || phone.length > 15) { setAuthError(t('authPhoneBad')); return; }
+    if (pw.length < 6) { setAuthError(t('authPassShort')); return; }
+    if (pw !== pw2) { setAuthError(t('authPassMismatch')); return; }
+    setAuthBusy(true);
+    try {
+        const salt = randomSalt();
+        const hash = await hashPassword(salt, pw);
+        const prof = { id: phone, name, phone, photo: regPhoto || '', createdAt: nowIso() };
+        await withTimeout(saveNewUser(prof, { salt, hash }), 15000);
+        loginAs(prof);
+    } catch (err) {
+        console.error(err);
+        setAuthError(err && err.message === 'EXISTS' ? t('authPhoneExists') : t('authNetError'));
+    } finally { setAuthBusy(false); }
+}
+
+function processProfilePhoto(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const img = new Image();
+        img.onload = function() {
+            const SIZE = 96;
+            const canvas = document.createElement('canvas');
+            canvas.width = SIZE; canvas.height = SIZE;
+            const ctx = canvas.getContext('2d');
+            const m = Math.min(img.width, img.height);
+            ctx.drawImage(img, (img.width - m) / 2, (img.height - m) / 2, m, m, 0, 0, SIZE, SIZE);
+            regPhoto = canvas.toDataURL('image/jpeg', 0.7);
+            const pv = document.getElementById('regPreview');
+            pv.src = regPhoto; pv.classList.remove('hidden');
+            document.getElementById('regPlaceholder').classList.add('hidden');
+        };
+        img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+}
+
+function resetRegForm() {
+    regPhoto = '';
+    const f = document.getElementById('registerForm');
+    if (f) f.reset();
+    const pv = document.getElementById('regPreview');
+    if (pv) { pv.src = ''; pv.classList.add('hidden'); }
+    const ph = document.getElementById('regPlaceholder');
+    if (ph) ph.classList.remove('hidden');
+}
+
+function requestLogout() {
+    openConfirmDialog(t('logoutTitle'), t('logoutMsg'), () => doLogout(false));
+}
+
+function doLogout(forced) {
+    currentUser = null;
+    try { localStorage.removeItem(STORAGE_KEYS.SESSION); } catch (e) {}
+    ['productDetailModal', 'addModal', 'backupModal', 'aiModal', 'historyModal', 'disposeModal', 'imageViewer', 'pinModal'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.classList.add('hidden');
+    });
+    setAuthMode('login');
+    updateAuthVisibility();
+    if (forced) showToast(t('loggedOutForced'), 'warning');
+}
+
+function openImageSrc(src) {
+    if (!src) return;
+    document.getElementById('viewerImage').src = src;
+    document.getElementById('imageViewer').classList.remove('hidden');
 }
 
 function playBeep() {
@@ -1876,7 +2838,9 @@ function prepareExportData() {
             [currentLang === 'ar' ? 'الكمية' : 'Quantity']: b.qty,
             [currentLang === 'ar' ? 'أيام التنبيه' : 'Alert Days']: b.alertDays,
             [currentLang === 'ar' ? 'الحالة' : 'Status']: st.label,
-            [currentLang === 'ar' ? 'الأيام المتبقية' : 'Days Remaining']: st.days
+            [currentLang === 'ar' ? 'الأيام المتبقية' : 'Days Remaining']: st.days,
+            [currentLang === 'ar' ? 'آخر تعديل بواسطة' : 'Last Edited By']: b.updatedBy ? userName(b.updatedBy.id, b.updatedBy.name) : '',
+            [currentLang === 'ar' ? 'وقت آخر تعديل' : 'Last Edit Time']: b.updatedAt ? formatDateTime(b.updatedAt) : ''
         };
     });
 }
@@ -2116,6 +3080,11 @@ function exportExcel() {
         const statsSheet = XLSX.utils.json_to_sheet(stats);
         statsSheet['!cols'] = [{ wch: 18 }, { wch: 10 }];
         XLSX.utils.book_append_sheet(workbook, statsSheet, currentLang === 'ar' ? 'الإحصائيات' : 'Statistics');
+        if (histRecs.length) {
+            const hs = XLSX.utils.json_to_sheet(prepareHistoryExport());
+            hs['!cols'] = [{ wch: 18 }, { wch: 30 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 18 }, { wch: 18 }, { wch: 24 }];
+            XLSX.utils.book_append_sheet(workbook, hs, currentLang === 'ar' ? 'سجل التصريف' : 'Disposal History');
+        }
         const dateTag = new Date().toISOString().split('T')[0];
         XLSX.writeFile(workbook, `supermarket-expiry-${dateTag}.xlsx`);
         showToast(t('exportExcelSuccess'), 'success');
@@ -2139,7 +3108,7 @@ function exportCSV() {
 }
 
 function exportData() {
-    const payload = { version: 2, exportedAt: new Date().toISOString(), batches, catalog };
+    const payload = { version: 2, exportedAt: new Date().toISOString(), batches, catalog, history: histRecs };
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(payload, null, 2));
     const a = document.createElement('a');
     const dateTag = new Date().toISOString().split('T')[0];
@@ -2185,6 +3154,7 @@ function importData(event) {
                 const imported = JSON.parse(e.target.result);
                 if (Array.isArray(imported.batches)) {
                     const nb = imported.batches;
+                    if (Array.isArray(imported.history)) mergeHistory(imported.history);
                     const nc = imported.catalog || {};
                     nb.forEach(b => { if (!b.entryDate) b.entryDate = todayStr(); });
                     replaceAllData(nb, nc);
@@ -2397,6 +3367,7 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
         closeImageViewer();
         closeProductDetail();
+        closeHistoryModal();
     }
 });
 
