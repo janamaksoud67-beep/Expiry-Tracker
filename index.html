@@ -19,7 +19,7 @@
     <style>
         body {
             font-family: 'Cairo', sans-serif;
-            background-color: #f1f5f9;
+            background-color: #eef1ef;
             -webkit-tap-highlight-color: transparent;
             transition: background-color 0.3s, color 0.3s;
         }
@@ -50,6 +50,7 @@
         body.dark .text-emerald-800 { color: #6ee7b7 !important; }
         body.dark .border-emerald-200 { border-color: #065f46 !important; }
         body.dark .border-violet-200 { border-color: #5b21b6 !important; }
+        body.dark input[type="month"], body.dark input[type="date"] { color-scheme: dark; }
 
         .ai-glow { box-shadow: 0 0 20px rgba(139, 92, 246, 0.5), 0 0 40px rgba(139, 92, 246, 0.2); }
         @keyframes ai-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
@@ -106,86 +107,121 @@
         .log-row { border-inline-start: 3px solid #10b981; }
         #scanStatus { min-height: 1.1rem; }
         .scan-ok { color: #34d399; } .scan-warn { color: #fbbf24; } .scan-info { color: #cbd5e1; }
+
+        /* القائمة الجانبية */
+        #drawerOverlay { animation: fadeIn 0.2s ease-out; }
+        #drawerPanel { animation: drawerInLtr 0.22s ease-out; }
+        html[dir="rtl"] #drawerPanel { animation-name: drawerInRtl; }
+        @keyframes drawerInLtr { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+        @keyframes drawerInRtl { from { transform: translateX(100%); } to { transform: translateX(0); } }
+        .drawer-item { width: 100%; display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 0.85rem; border-radius: 0.9rem; font-size: 0.85rem; font-weight: 800; transition: background-color 0.15s, transform 0.1s; text-align: start; }
+        .drawer-item:active { transform: scale(0.98); }
     </style>
 </head>
 <body class="text-slate-800 pb-24 select-none">
 
     <header class="bg-slate-900 text-white sticky top-0 z-30 shadow-lg">
-        <div class="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
-            <div class="flex items-center gap-2.5">
-                <div class="bg-emerald-500 p-2 rounded-xl text-slate-900">
-                    <i data-lucide="scan-barcode" class="w-6 h-6"></i>
-                </div>
-                <div>
-                    <h1 class="font-extrabold text-lg leading-tight" data-i18n="appTitle">متتبع الصلاحية</h1>
-                    <p class="text-xs text-slate-400" data-i18n="appSubtitle">إدارة رفوف السوبر ماركت</p>
-                    <p id="syncBadge" class="text-[10px] font-bold mt-0.5"></p>
+        <div class="max-w-3xl mx-auto px-3 py-2 flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2.5 min-w-0">
+                <button onclick="openDrawer()" class="p-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl transition active:scale-95 shrink-0">
+                    <i data-lucide="menu" class="w-5 h-5 text-emerald-400"></i>
+                </button>
+                <div class="min-w-0">
+                    <h1 class="font-extrabold text-base leading-tight truncate" data-i18n="appTitle">متتبع الصلاحية</h1>
+                    <p id="syncBadge" class="text-[10px] font-bold"></p>
                 </div>
             </div>
-            <div class="flex items-center gap-1.5">
-                <button onclick="toggleLanguage()" class="p-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl transition active:scale-95 text-xs font-extrabold text-emerald-400">
-                    <span id="langLabel">EN</span>
-                </button>
-                <button onclick="toggleTheme()" class="p-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl transition active:scale-95">
-                    <i id="themeIcon" data-lucide="moon" class="w-5 h-5 text-amber-400"></i>
-                </button>
-                <button onclick="openAIModal()" class="relative p-2.5 bg-gradient-to-br from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 rounded-xl transition active:scale-95">
-                    <i data-lucide="sparkles" class="w-5 h-5 text-white"></i>
-                </button>
-                <button onclick="triggerAlertCheck(true)" class="relative p-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl transition active:scale-95">
-                    <i data-lucide="bell-ring" class="w-5 h-5 text-amber-400"></i>
-                    <span id="alertBadge" class="hidden absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center">0</span>
-                </button>
-                <button onclick="openBackupModal()" class="p-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl transition active:scale-95">
-                    <i data-lucide="database-backup" class="w-5 h-5 text-sky-400"></i>
-                </button>
-            </div>
+            <button onclick="triggerAlertCheck(true)" class="relative p-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl transition active:scale-95 shrink-0">
+                <i data-lucide="bell-ring" class="w-5 h-5 text-amber-400"></i>
+                <span id="alertBadge" class="hidden absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center">0</span>
+            </button>
         </div>
 
-        <div class="bg-slate-800/60 border-t border-slate-700/60 px-3 py-1.5">
-            <div class="max-w-3xl mx-auto flex items-center justify-between gap-2">
-                <div id="userChip" class="flex items-center gap-2 min-w-0"></div>
-                <div class="flex items-center gap-1.5 shrink-0">
-                    <button onclick="openHistoryModal()" class="relative flex items-center gap-1.5 bg-slate-700 hover:bg-slate-600 text-white text-[11px] font-bold px-2.5 py-1.5 rounded-lg active:scale-95 transition">
-                        <i data-lucide="history" class="w-4 h-4 text-emerald-400"></i>
-                        <span data-i18n="historyBtn">سجل التصريف</span>
-                        <span id="historyCount" class="hidden bg-emerald-500 text-slate-900 text-[10px] font-extrabold px-1.5 rounded-md"></span>
-                    </button>
-                    <button onclick="requestLogout()" class="bg-slate-700 hover:bg-red-600 text-white p-1.5 rounded-lg active:scale-95 transition" data-i18n-title="logoutBtn" title="تسجيل الخروج">
-                        <i data-lucide="log-out" class="w-4 h-4"></i>
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <div class="bg-slate-800/90 border-t border-slate-700/80 px-3 py-2.5">
+        <div class="bg-slate-800/90 border-t border-slate-700/80 px-3 py-2">
             <div class="max-w-3xl mx-auto grid grid-cols-4 gap-2 text-center">
-                <button onclick="setStatusFilter('expired')" class="bg-red-500/15 border border-red-500/40 rounded-xl p-1.5 active:scale-95 transition">
-                    <div id="count-expired" class="text-lg font-extrabold text-red-400 leading-none">0</div>
-                    <div class="text-[11px] text-red-200 mt-1 font-semibold" data-i18n="statExpired">منتهي</div>
+                <button onclick="setStatusFilter('expired')" class="bg-red-500/15 border border-red-500/40 rounded-xl py-1 active:scale-95 transition">
+                    <div id="count-expired" class="text-base font-extrabold text-red-400 leading-none">0</div>
+                    <div class="text-[10px] text-red-200 mt-0.5 font-semibold" data-i18n="statExpired">منتهي</div>
                 </button>
-                <button onclick="setStatusFilter('danger')" class="bg-orange-500/15 border border-orange-500/40 rounded-xl p-1.5 active:scale-95 transition">
-                    <div id="count-danger" class="text-lg font-extrabold text-orange-400 leading-none">0</div>
-                    <div class="text-[11px] text-orange-200 mt-1 font-semibold" data-i18n="statDanger">خطر قريب</div>
+                <button onclick="setStatusFilter('danger')" class="bg-orange-500/15 border border-orange-500/40 rounded-xl py-1 active:scale-95 transition">
+                    <div id="count-danger" class="text-base font-extrabold text-orange-400 leading-none">0</div>
+                    <div class="text-[10px] text-orange-200 mt-0.5 font-semibold" data-i18n="statDanger">خطر قريب</div>
                 </button>
-                <button onclick="setStatusFilter('warning')" class="bg-amber-500/15 border border-amber-500/40 rounded-xl p-1.5 active:scale-95 transition">
-                    <div id="count-warning" class="text-lg font-extrabold text-amber-300 leading-none">0</div>
-                    <div class="text-[11px] text-amber-100 mt-1 font-semibold" data-i18n="statWarning">مراقبة</div>
+                <button onclick="setStatusFilter('warning')" class="bg-amber-500/15 border border-amber-500/40 rounded-xl py-1 active:scale-95 transition">
+                    <div id="count-warning" class="text-base font-extrabold text-amber-300 leading-none">0</div>
+                    <div class="text-[10px] text-amber-100 mt-0.5 font-semibold" data-i18n="statWarning">مراقبة</div>
                 </button>
-                <button onclick="setStatusFilter('safe')" class="bg-emerald-500/15 border border-emerald-500/40 rounded-xl p-1.5 active:scale-95 transition">
-                    <div id="count-safe" class="text-lg font-extrabold text-emerald-400 leading-none">0</div>
-                    <div class="text-[11px] text-emerald-200 mt-1 font-semibold" data-i18n="statSafe">سليم</div>
+                <button onclick="setStatusFilter('safe')" class="bg-emerald-500/15 border border-emerald-500/40 rounded-xl py-1 active:scale-95 transition">
+                    <div id="count-safe" class="text-base font-extrabold text-emerald-400 leading-none">0</div>
+                    <div class="text-[10px] text-emerald-200 mt-0.5 font-semibold" data-i18n="statSafe">سليم</div>
                 </button>
             </div>
         </div>
     </header>
 
-    <main class="max-w-3xl mx-auto px-3 pt-4 space-y-4">
+    <!-- القائمة الجانبية -->
+    <div id="drawerOverlay" class="hidden fixed inset-0 z-[58] bg-slate-950/70 backdrop-blur-xs" onclick="closeDrawer()">
+        <div id="drawerPanel" onclick="event.stopPropagation()" class="absolute inset-y-0 start-0 w-72 max-w-[85vw] bg-white shadow-2xl flex flex-col overflow-y-auto">
+            <div class="bg-slate-900 text-white px-4 py-4 flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                    <div class="bg-emerald-500 p-2 rounded-xl text-slate-900"><i data-lucide="scan-barcode" class="w-5 h-5"></i></div>
+                    <div>
+                        <div class="font-extrabold text-sm leading-tight" data-i18n="appTitle">متتبع الصلاحية</div>
+                        <div class="text-[10px] text-slate-400" data-i18n="appSubtitle">إدارة رفوف السوبر ماركت</div>
+                    </div>
+                </div>
+                <button onclick="closeDrawer()" class="bg-slate-800 p-1.5 rounded-xl text-slate-300 hover:text-white">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="p-3 space-y-1.5">
+                <div class="bg-slate-900 rounded-2xl px-3 py-2.5">
+                    <div id="userChip" class="flex items-center gap-2 min-w-0"></div>
+                </div>
+
+                <button onclick="closeDrawer(); openHistoryModal()" class="drawer-item bg-slate-100 hover:bg-slate-200 text-slate-800">
+                    <i data-lucide="history" class="w-5 h-5 text-emerald-600"></i>
+                    <span class="flex-1" data-i18n="historyBtn">سجل التصريف</span>
+                    <span id="historyCount" class="hidden bg-emerald-500 text-slate-900 text-[10px] font-extrabold px-1.5 rounded-md"></span>
+                </button>
+                <button onclick="closeDrawer(); openAIModal()" class="drawer-item bg-slate-100 hover:bg-slate-200 text-slate-800">
+                    <i data-lucide="sparkles" class="w-5 h-5 text-purple-600"></i>
+                    <span class="flex-1" data-i18n="aiTitle">المساعد الذكي</span>
+                </button>
+                <button onclick="closeDrawer(); openBackupModal()" class="drawer-item bg-slate-100 hover:bg-slate-200 text-slate-800">
+                    <i data-lucide="database-backup" class="w-5 h-5 text-sky-600"></i>
+                    <span class="flex-1" data-i18n="menuBackup">النسخ الاحتياطي</span>
+                </button>
+
+                <hr class="border-slate-200 my-2">
+
+                <button onclick="toggleLanguage()" class="drawer-item bg-slate-100 hover:bg-slate-200 text-slate-800">
+                    <i data-lucide="languages" class="w-5 h-5 text-emerald-600"></i>
+                    <span class="flex-1" data-i18n="menuLang">اللغة</span>
+                    <span id="langLabel" class="bg-slate-900 text-emerald-400 text-[11px] font-extrabold px-2 py-0.5 rounded-lg">EN</span>
+                </button>
+                <button onclick="toggleTheme()" class="drawer-item bg-slate-100 hover:bg-slate-200 text-slate-800">
+                    <i id="themeIcon" data-lucide="moon" class="w-5 h-5 text-amber-500"></i>
+                    <span class="flex-1" data-i18n="menuTheme">الوضع الليلي / النهاري</span>
+                </button>
+
+                <hr class="border-slate-200 my-2">
+
+                <button onclick="closeDrawer(); requestLogout()" class="drawer-item bg-red-50 hover:bg-red-100 text-red-600">
+                    <i data-lucide="log-out" class="w-5 h-5"></i>
+                    <span class="flex-1" data-i18n="logoutBtn">تسجيل الخروج</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <main class="max-w-3xl mx-auto px-3 pt-3 space-y-3">
         <div class="flex gap-2">
             <div class="relative flex-1">
                 <i data-lucide="search" class="w-5 h-5 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2"></i>
                 <input type="text" id="searchInput" oninput="onSearchInput()" data-i18n-placeholder="searchPlaceholder" placeholder="ابحث باسم الصنف أو الباركود..."
-                    class="w-full bg-white border border-slate-300 rounded-2xl py-3 pr-11 pl-10 text-sm font-semibold focus:outline-none focus:border-slate-900 shadow-sm">
+                    class="w-full bg-white border border-slate-300 rounded-2xl py-2.5 pr-11 pl-10 text-sm font-semibold focus:outline-none focus:border-slate-900 shadow-sm">
                 <button id="clearSearchBtn" onclick="clearSearch()" class="hidden absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-1">
                     <i data-lucide="x-circle" class="w-5 h-5"></i>
                 </button>
@@ -196,7 +232,7 @@
             </button>
         </div>
 
-        <div class="flex gap-2 overflow-x-auto no-scrollbar pb-1" id="statusFilters">
+        <div class="flex gap-2 overflow-x-auto no-scrollbar pb-0.5" id="statusFilters">
             <button data-status="all" onclick="setStatusFilter('all')" class="status-pill active-pill px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap bg-slate-900 text-white shadow-sm" data-i18n="filterAll">الكل</button>
             <button data-status="expired" onclick="setStatusFilter('expired')" class="status-pill px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap bg-white text-red-600 border border-slate-200" data-i18n="filterExpired">🔴 منتهي الصلاحية</button>
             <button data-status="danger" onclick="setStatusFilter('danger')" class="status-pill px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap bg-white text-orange-600 border border-slate-200" data-i18n="filterDanger">🟠 خطر قريب</button>
@@ -204,14 +240,28 @@
             <button data-status="safe" onclick="setStatusFilter('safe')" class="status-pill px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap bg-white text-emerald-600 border border-slate-200" data-i18n="filterSafe">🟢 سليم</button>
         </div>
 
-        <div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-1" id="categoryFilters">
-            <button data-cat="all" onclick="setCategoryFilter('all')" class="cat-pill px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap bg-slate-200 text-slate-900" data-i18n="catAll">جميع الأقسام</button>
-            <button data-cat="dairy" onclick="setCategoryFilter('dairy')" class="cat-pill px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap bg-white text-slate-600 border border-slate-200" data-i18n="catDairy">🥛 ألبان وأجبان</button>
-            <button data-cat="canned" onclick="setCategoryFilter('canned')" class="cat-pill px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap bg-white text-slate-600 border border-slate-200" data-i18n="catCanned">🥫 معلبات</button>
-            <button data-cat="drinks" onclick="setCategoryFilter('drinks')" class="cat-pill px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap bg-white text-slate-600 border border-slate-200" data-i18n="catDrinks">🧃 مشروبات</button>
-            <button data-cat="sweets" onclick="setCategoryFilter('sweets')" class="cat-pill px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap bg-white text-slate-600 border border-slate-200" data-i18n="catSweets">🍫 حلويات</button>
-            <button data-cat="frozen" onclick="setCategoryFilter('frozen')" class="cat-pill px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap bg-white text-slate-600 border border-slate-200" data-i18n="catFrozen">❄️ مجمدات</button>
-            <button data-cat="other" onclick="setCategoryFilter('other')" class="cat-pill px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap bg-white text-slate-600 border border-slate-200" data-i18n="catOther">📦 أخرى</button>
+        <!-- فلتر الشهر + القسم -->
+        <div class="bg-white border border-slate-200 rounded-2xl p-2.5 space-y-2 shadow-sm">
+            <div class="grid grid-cols-2 gap-2">
+                <input type="month" id="monthFilter" onchange="setMonthFilter(this.value)"
+                    class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-extrabold text-slate-800 focus:outline-none focus:border-emerald-600">
+                <select id="categorySelect" onchange="setCategoryFilter(this.value)"
+                    class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-extrabold text-slate-800 focus:outline-none focus:border-emerald-600">
+                    <option value="all" data-i18n="catAll">جميع الأقسام</option>
+                    <option value="dairy" data-i18n="catDairy">🥛 ألبان وأجبان</option>
+                    <option value="canned" data-i18n="catCanned">🥫 معلبات</option>
+                    <option value="drinks" data-i18n="catDrinks">🧃 مشروبات</option>
+                    <option value="sweets" data-i18n="catSweets">🍫 حلويات</option>
+                    <option value="frozen" data-i18n="catFrozen">❄️ مجمدات</option>
+                    <option value="other" data-i18n="catOther">📦 أخرى</option>
+                </select>
+            </div>
+            <div class="flex items-center gap-1.5 flex-wrap">
+                <span class="text-[11px] font-bold text-slate-500" data-i18n="monthLabel">📅 ينتهي في شهر:</span>
+                <button type="button" data-moff="0" onclick="setMonthFilter(monthOffset(0))" class="month-chip px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200" data-i18n="thisMonth">هذا الشهر</button>
+                <button type="button" data-moff="1" onclick="setMonthFilter(monthOffset(1))" class="month-chip px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200" data-i18n="nextMonth">الشهر القادم</button>
+                <button type="button" id="clearMonthBtn" onclick="setMonthFilter('')" class="hidden px-2.5 py-1 rounded-lg text-[11px] font-bold bg-red-50 text-red-600 border border-red-200" data-i18n="monthClear">مسح الشهر ✕</button>
+            </div>
         </div>
 
         <div id="summaryBar" class="hidden bg-white rounded-2xl border border-slate-200 p-3 shadow-sm">
@@ -738,6 +788,8 @@ const EMBEDDED_DATA = {
 
 const I18N = {
     ar: {
+        menuBackup: 'النسخ الاحتياطي', menuLang: 'اللغة', menuTheme: 'الوضع الليلي / النهاري',
+        monthLabel: '📅 ينتهي في شهر:', thisMonth: 'هذا الشهر', nextMonth: 'الشهر القادم', monthClear: 'مسح الشهر ✕',
         appTitle: 'متتبع الصلاحية', appSubtitle: 'إدارة رفوف السوبر ماركت',
         searchPlaceholder: 'ابحث باسم الصنف أو الباركود...', cameraSearch: 'بحث بالكاميرا / QR Code',
         scanHint: 'اضغط زر المسح للبحث بالباركود أو QR Code',
@@ -885,6 +937,8 @@ const I18N = {
         barcodeBad: '⚠️ الرقم لا يطابق فحص الخانة الأخيرة — قد يكون خاطئاً، راجعه.'
     },
     en: {
+        menuBackup: 'Backup', menuLang: 'Language', menuTheme: 'Dark / Light mode',
+        monthLabel: '📅 Expiring in month:', thisMonth: 'This month', nextMonth: 'Next month', monthClear: 'Clear month ✕',
         appTitle: 'Expiry Tracker', appSubtitle: 'Supermarket Shelf Management',
         searchPlaceholder: 'Search by name or barcode...', cameraSearch: 'Camera / QR Search',
         scanHint: 'Tap the scan button to search by barcode or QR Code',
@@ -1043,7 +1097,7 @@ const STORAGE_KEYS = {
 const PER_PAGE = 50;
 
 let batches = [], catalog = {};
-let currentStatusFilter = 'all', currentCategoryFilter = 'all';
+let currentStatusFilter = 'all', currentCategoryFilter = 'all', currentMonthFilter = '';
 let currentPage = 1;
 let currentCompressedImage = '';
 let html5QrcodeScanner = null, scannerMode = 'form';
@@ -1099,6 +1153,19 @@ window.onload = function() {
     initAuth();
     if (cloudEnabled) initCloud(); else updateSyncBadge('local');
 };
+
+// ==========================================
+// القائمة الجانبية
+// ==========================================
+function openDrawer() {
+    document.getElementById('drawerOverlay').classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+    lucide.createIcons();
+}
+function closeDrawer() {
+    document.getElementById('drawerOverlay').classList.add('hidden');
+    document.body.style.overflow = '';
+}
 
 // ==========================================
 // قاعدة البيانات السحابية (Firebase Firestore)
@@ -1252,7 +1319,7 @@ function updateSyncBadge(state) {
     };
     const [key, cls] = map[syncState] || map.local;
     el.textContent = t(key);
-    el.className = 'text-[10px] font-bold mt-0.5 ' + cls;
+    el.className = 'text-[10px] font-bold ' + cls;
 }
 
 function applyShopCode() {
@@ -1339,15 +1406,17 @@ function restoreFilters() {
         const saved = JSON.parse(localStorage.getItem(STORAGE_KEYS.FILTERS) || '{}');
         if (saved.status) currentStatusFilter = saved.status;
         if (saved.category) currentCategoryFilter = saved.category;
+        if (saved.month) currentMonthFilter = saved.month;
         if (saved.search) document.getElementById('searchInput').value = saved.search;
         setStatusFilter(currentStatusFilter, false);
         setCategoryFilter(currentCategoryFilter, false);
+        setMonthFilter(currentMonthFilter, false);
     } catch (e) {}
 }
 
 function saveFilters() {
     localStorage.setItem(STORAGE_KEYS.FILTERS, JSON.stringify({
-        status: currentStatusFilter, category: currentCategoryFilter,
+        status: currentStatusFilter, category: currentCategoryFilter, month: currentMonthFilter,
         search: document.getElementById('searchInput').value
     }));
 }
@@ -1514,6 +1583,57 @@ function groupByEntryDate(items) {
     return Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0]));
 }
 
+// عند اختيار شهر: نجمّع حسب تاريخ الانتهاء (الأقرب أولاً)
+function groupByExpiryDate(items) {
+    const groups = {};
+    items.forEach(item => {
+        const key = String(item.expiryDate || 'unknown');
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(item);
+    });
+    return Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0]));
+}
+
+// ==========================================
+// فلتر الشهر
+// ==========================================
+function monthOffset(n) {
+    const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() + n);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+
+function monthLabel(m) {
+    try {
+        const parts = String(m).split('-');
+        return new Date(+parts[0], +parts[1] - 1, 1).toLocaleDateString(currentLang === 'ar' ? 'ar-EG' : 'en-US', { month: 'long', year: 'numeric' });
+    } catch (e) { return m; }
+}
+
+function updateMonthChips() {
+    const mf = document.getElementById('monthFilter');
+    if (mf) mf.value = currentMonthFilter;
+    const clr = document.getElementById('clearMonthBtn');
+    if (clr) clr.classList.toggle('hidden', !currentMonthFilter);
+    document.querySelectorAll('.month-chip').forEach(btn => {
+        const active = currentMonthFilter && monthOffset(parseInt(btn.dataset.moff)) === currentMonthFilter;
+        btn.classList.toggle('bg-emerald-600', !!active);
+        btn.classList.toggle('text-white', !!active);
+        btn.classList.toggle('border-emerald-600', !!active);
+        btn.classList.toggle('bg-slate-100', !active);
+        btn.classList.toggle('text-slate-700', !active);
+    });
+}
+
+function setMonthFilter(value, rerender = true) {
+    currentMonthFilter = /^\d{4}-\d{2}$/.test(value || '') ? value : '';
+    currentPage = 1;
+    updateMonthChips();
+    saveFilters();
+    if (rerender) renderBatches();
+}
+
 function renderBatches() {
     const listEl = document.getElementById('batchesList');
     const emptyEl = document.getElementById('emptyState');
@@ -1542,8 +1662,9 @@ function renderBatches() {
     const filtered = enriched.filter(item => {
         const matchStatus = currentStatusFilter === 'all' || item.status.key === currentStatusFilter;
         const matchCat = currentCategoryFilter === 'all' || item.category === currentCategoryFilter;
+        const matchMonth = !currentMonthFilter || String(item.expiryDate || '').startsWith(currentMonthFilter);
         const matchSearch = !searchQuery || item.name.toLowerCase().includes(searchQuery) || (item.barcode && item.barcode.toLowerCase().includes(searchQuery));
-        return matchStatus && matchCat && matchSearch;
+        return matchStatus && matchCat && matchMonth && matchSearch;
     });
 
     if (filtered.length === 0) {
@@ -1556,7 +1677,7 @@ function renderBatches() {
     emptyEl.classList.add('hidden');
     summaryEl.classList.remove('hidden');
 
-    document.getElementById('summaryText').textContent = t('summaryText', filtered.length);
+    document.getElementById('summaryText').textContent = t('summaryText', filtered.length) + (currentMonthFilter ? ' · ' + monthLabel(currentMonthFilter) : '');
     document.getElementById('summaryTotal').textContent = `${filtered.reduce((s, i) => s + i.qty, 0)} ${t('products')}`;
 
     const totalPages = Math.ceil(filtered.length / PER_PAGE);
@@ -1565,12 +1686,12 @@ function renderBatches() {
     const start = (currentPage - 1) * PER_PAGE;
     const pageItems = filtered.slice(start, start + PER_PAGE);
 
-    const groups = groupByEntryDate(pageItems);
+    const groups = currentMonthFilter ? groupByExpiryDate(pageItems) : groupByEntryDate(pageItems);
 
     let html = '';
     groups.forEach(([entryDate, items]) => {
         const dateLabel = formatEntryDate(entryDate);
-        const relativeLabel = getRelativeDateLabel(entryDate);
+        const relativeLabel = currentMonthFilter ? '' : getRelativeDateLabel(entryDate);
         const badgeLabel = relativeLabel ? `${relativeLabel} · ${dateLabel}` : dateLabel;
         const totalQty = items.reduce((s, i) => s + i.qty, 0);
         html += `
@@ -1832,11 +1953,9 @@ function setStatusFilter(status, rerender = true) {
 
 function setCategoryFilter(cat, rerender = true) {
     currentCategoryFilter = cat;
+    const cs = document.getElementById('categorySelect');
+    if (cs) cs.value = cat;
     currentPage = 1;
-    document.querySelectorAll('.cat-pill').forEach(btn => {
-        if (btn.dataset.cat === cat) btn.className = 'cat-pill px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap bg-slate-800 text-white';
-        else btn.className = 'cat-pill px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap bg-white text-slate-600 border border-slate-200';
-    });
     saveFilters();
     if (rerender) renderBatches();
 }
@@ -2733,7 +2852,7 @@ function requestLogout() {
 function doLogout(forced) {
     currentUser = null;
     try { localStorage.removeItem(STORAGE_KEYS.SESSION); } catch (e) {}
-    ['productDetailModal', 'addModal', 'backupModal', 'aiModal', 'historyModal', 'disposeModal', 'imageViewer', 'pinModal'].forEach(id => {
+    ['productDetailModal', 'addModal', 'backupModal', 'aiModal', 'historyModal', 'disposeModal', 'imageViewer', 'pinModal', 'drawerOverlay'].forEach(id => {
         const el = document.getElementById(id); if (el) el.classList.add('hidden');
     });
     setAuthMode('login');
@@ -3365,6 +3484,7 @@ function copyToClipboard(text) {
 
 document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
+        closeDrawer();
         closeImageViewer();
         closeProductDetail();
         closeHistoryModal();
