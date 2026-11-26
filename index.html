@@ -15,6 +15,7 @@
     <!-- Firebase (قاعدة البيانات السحابية) -->
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 
     <style>
         body {
@@ -177,7 +178,8 @@
 
             <div class="p-3 space-y-1.5">
                 <div class="bg-slate-900 rounded-2xl px-3 py-2.5">
-                    <div id="userChip" class="flex items-center gap-2 min-w-0"></div>
+                    <div id="userChip" onclick="document.getElementById('profilePhotoInput').click()" class="flex items-center gap-2 min-w-0 cursor-pointer"></div>
+                    <input type="file" id="profilePhotoInput" accept="image/*" onchange="changeMyPhoto(event)" class="hidden">
                 </div>
 
                 <button onclick="closeDrawer(); openHistoryModal()" class="drawer-item bg-slate-100 hover:bg-slate-200 text-slate-800">
@@ -193,6 +195,13 @@
                     <i data-lucide="database-backup" class="w-5 h-5 text-sky-600"></i>
                     <span class="flex-1" data-i18n="menuBackup">النسخ الاحتياطي</span>
                 </button>
+
+                <div id="adminMenuWrap" class="hidden">
+                    <button onclick="closeDrawer(); openUsersModal()" class="drawer-item bg-slate-100 hover:bg-slate-200 text-slate-800">
+                        <i data-lucide="users" class="w-5 h-5 text-indigo-600"></i>
+                        <span class="flex-1" data-i18n="usersMenu">إدارة الحسابات</span>
+                    </button>
+                </div>
 
                 <hr class="border-slate-200 my-2">
 
@@ -445,6 +454,12 @@
                     </div>
                 </div>
 
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1.5" data-i18n="priceLabel">السعر (اختياري)</label>
+                    <input type="number" id="inputPrice" min="0" step="any" inputmode="decimal" placeholder="0.00" dir="ltr"
+                        class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-base font-extrabold text-center focus:outline-none focus:border-emerald-600">
+                </div>
+
                 <div class="pt-2 flex gap-2.5">
                     <button type="submit" id="saveBtnText" class="flex-1 bg-emerald-600 hover:bg-emerald-700 active:scale-95 transition text-white font-extrabold py-3.5 rounded-2xl text-base shadow-lg shadow-emerald-600/20" data-i18n="saveBtn">حفظ الصنف</button>
                     <button type="button" onclick="closeAddModal()" class="px-5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3.5 rounded-2xl text-sm" data-i18n="cancelBtn">إلغاء</button>
@@ -597,13 +612,13 @@
             <div class="w-12 h-12 rounded-full bg-sky-100 text-sky-600 flex items-center justify-center mx-auto">
                 <i data-lucide="lock" class="w-6 h-6"></i>
             </div>
-            <h4 class="font-extrabold text-slate-900 text-base">أدخل الرمز للمتابعة</h4>
+            <h4 id="pinTitle" class="font-extrabold text-slate-900 text-base">أدخل الرمز للمتابعة</h4>
             <input type="password" id="pinInput" inputmode="numeric" autocomplete="off" dir="ltr" placeholder="••••••••"
                 class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-3 text-center text-lg font-extrabold tracking-widest focus:outline-none focus:border-sky-600">
-            <p id="pinError" class="hidden text-xs font-bold text-red-600">الرمز غير صحيح</p>
+            <p id="pinError" data-i18n="codeWrong" class="hidden text-xs font-bold text-red-600">الرمز غير صحيح</p>
             <div class="flex gap-2.5">
-                <button type="submit" class="flex-1 bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 rounded-xl text-sm">دخول</button>
-                <button type="button" onclick="closePinModal()" class="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold py-2.5 rounded-xl text-sm">إلغاء</button>
+                <button type="submit" data-i18n="codeEnter" class="flex-1 bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 rounded-xl text-sm">دخول</button>
+                <button type="button" onclick="closePinModal()" data-i18n="cancelBtn" class="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold py-2.5 rounded-xl text-sm">إلغاء</button>
             </div>
         </form>
     </div>
@@ -635,7 +650,7 @@
                 </button>
             </div>
             <div class="p-4 space-y-3">
-                <div id="historySummary" class="grid grid-cols-2 gap-2"></div>
+                <div id="historySummary" class="grid grid-cols-3 gap-2"></div>
                 <div id="historyUserChips" class="flex gap-1.5 flex-wrap"></div>
                 <div class="grid grid-cols-2 gap-2">
                     <select id="hUser" onchange="onHistoryFilter()" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-bold focus:outline-none focus:border-emerald-600"></select>
@@ -680,7 +695,51 @@
         </div>
     </div>
 
-    <!-- شاشة الدخول / التسجيل -->
+    <!-- نافذة إدارة الحسابات (للمدير فقط) -->
+    <div id="usersModal" class="hidden fixed inset-0 z-[57] bg-slate-950/85 backdrop-blur-sm overflow-y-auto p-3 sm:p-6">
+        <div class="bg-white rounded-3xl max-w-lg w-full mx-auto my-4 shadow-2xl overflow-hidden">
+            <div class="bg-slate-900 text-white px-5 py-4 flex items-center justify-between sticky top-0 z-10">
+                <h3 class="font-extrabold text-base flex items-center gap-2">
+                    <i data-lucide="users" class="w-5 h-5 text-emerald-400"></i>
+                    <span data-i18n="usersTitle">إدارة حسابات الموظفين</span>
+                </h3>
+                <button onclick="closeUsersModal()" class="bg-slate-800 p-1.5 rounded-xl text-slate-300 hover:text-white">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div class="p-4 space-y-3">
+                <form id="newUserForm" onsubmit="createUserAccount(event)" class="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 space-y-2.5">
+                    <h4 class="font-extrabold text-emerald-900 text-xs flex items-center gap-1.5">
+                        <i data-lucide="user-plus" class="w-4 h-4 text-emerald-600"></i>
+                        <span data-i18n="usersAddTitle">إضافة موظف جديد</span>
+                    </h4>
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-700 mb-1" data-i18n="usersName">اسم الموظف</label>
+                        <input type="text" id="newUserName" required maxlength="40" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none focus:border-emerald-600">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-700 mb-1" data-i18n="authEmail">البريد الإلكتروني</label>
+                        <input type="email" id="newUserEmail" required dir="ltr" autocomplete="off" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none focus:border-emerald-600">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-700 mb-1" data-i18n="usersPass">كلمة مرور مبدئية</label>
+                        <div class="flex gap-2">
+                            <input type="text" id="newUserPass" required minlength="6" dir="ltr" autocomplete="off" class="flex-1 bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-sm font-bold font-mono focus:outline-none focus:border-emerald-600">
+                            <button type="button" onclick="fillGeneratedPass()" class="bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-3 rounded-xl active:scale-95 transition" data-i18n="usersGen">توليد</button>
+                        </div>
+                    </div>
+                    <p id="usersMsg" class="hidden"></p>
+                    <button type="submit" id="newUserSubmit" class="w-full bg-emerald-600 hover:bg-emerald-700 active:scale-95 transition text-white font-extrabold py-3 rounded-xl text-sm" data-i18n="usersCreateBtn">إنشاء الحساب</button>
+                </form>
+
+                <div id="newUserCred" class="hidden bg-violet-50 border border-violet-200 rounded-2xl p-3"></div>
+
+                <div id="usersList" class="space-y-2"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- شاشة الدخول (بدون تسجيل ذاتي: الحسابات ينشئها المدير فقط) -->
     <div id="authScreen" class="fixed inset-0 z-[90] bg-slate-900 overflow-y-auto">
         <div class="min-h-full flex items-center justify-center p-4">
             <div class="w-full max-w-md">
@@ -689,65 +748,41 @@
                         <div class="bg-emerald-500 p-2 rounded-xl text-slate-900"><i data-lucide="scan-barcode" class="w-6 h-6"></i></div>
                         <div>
                             <h1 class="font-extrabold text-lg leading-tight" data-i18n="appTitle">متتبع الصلاحية</h1>
-                            <p class="text-xs text-slate-400" data-i18n="authSub">سجّل دخولك لمتابعة رفوف السوبر ماركت</p>
+                            <p class="text-xs text-slate-400" data-i18n="authSub">الدخول للموظفين المصرّح لهم فقط</p>
                         </div>
                     </div>
                     <button onclick="toggleLanguage()" class="p-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-extrabold text-emerald-400"><span id="langLabel2">EN</span></button>
                 </div>
 
-                <div class="bg-white rounded-3xl shadow-2xl overflow-hidden">
-                    <div class="grid grid-cols-2 gap-1.5 bg-slate-100 p-1.5 m-3 rounded-2xl">
-                        <button id="tabLogin" type="button" onclick="setAuthMode('login')" class="py-2.5 rounded-xl text-sm font-extrabold" data-i18n="authLogin">تسجيل الدخول</button>
-                        <button id="tabRegister" type="button" onclick="setAuthMode('register')" class="py-2.5 rounded-xl text-sm font-extrabold" data-i18n="authRegister">حساب جديد</button>
+                <div id="authChecking" class="text-center py-12 text-slate-300 text-sm font-bold ai-thinking">
+                    <span data-i18n="authChecking">جاري التحقق من الحساب...</span>
+                </div>
+
+                <div id="authCard" class="hidden bg-white rounded-3xl shadow-2xl overflow-hidden">
+                    <div class="px-5 pt-5 flex items-center gap-2.5">
+                        <div class="w-10 h-10 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center"><i data-lucide="lock-keyhole" class="w-5 h-5"></i></div>
+                        <h2 class="font-extrabold text-base text-slate-900" data-i18n="authSignInTitle">تسجيل الدخول</h2>
                     </div>
-                    <p id="authError" class="hidden mx-5 mb-1 bg-red-50 border border-red-200 text-red-600 text-xs font-bold px-3 py-2 rounded-xl"></p>
+                    <p id="authError" class="hidden mx-5 mt-3 bg-red-50 border border-red-200 text-red-600 text-xs font-bold px-3 py-2 rounded-xl"></p>
 
                     <form id="loginForm" onsubmit="doLogin(event)" class="p-5 pt-3 space-y-3.5">
                         <div>
-                            <label class="block text-xs font-bold text-slate-700 mb-1.5" data-i18n="authPhone">رقم الهاتف</label>
-                            <input type="tel" id="loginPhone" dir="ltr" inputmode="tel" autocomplete="username" required
+                            <label class="block text-xs font-bold text-slate-700 mb-1.5" data-i18n="authEmail">البريد الإلكتروني</label>
+                            <input type="email" id="loginEmail" dir="ltr" inputmode="email" autocomplete="username" required
                                 class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-3 text-sm font-bold focus:outline-none focus:border-emerald-600 focus:bg-white">
                         </div>
                         <div>
                             <label class="block text-xs font-bold text-slate-700 mb-1.5" data-i18n="authPass">كلمة المرور</label>
-                            <input type="password" id="loginPass" dir="ltr" autocomplete="current-password" required
-                                class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-3 text-sm font-bold focus:outline-none focus:border-emerald-600 focus:bg-white">
+                            <div class="relative">
+                                <input type="password" id="loginPass" dir="ltr" autocomplete="current-password" required
+                                    class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-3 pe-11 text-sm font-bold focus:outline-none focus:border-emerald-600 focus:bg-white">
+                                <button type="button" onclick="togglePass('loginPass', this)" class="absolute end-2 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-700">
+                                    <i data-lucide="eye" class="w-5 h-5"></i>
+                                </button>
+                            </div>
                         </div>
                         <button type="submit" id="loginSubmit" class="w-full bg-emerald-600 hover:bg-emerald-700 active:scale-95 transition text-white font-extrabold py-3.5 rounded-2xl text-base shadow-lg shadow-emerald-600/20" data-i18n="authLoginBtn">دخول</button>
-                    </form>
-
-                    <form id="registerForm" onsubmit="doRegister(event)" class="hidden p-5 pt-3 space-y-3.5">
-                        <div class="flex items-center gap-3">
-                            <label for="regImage" class="cursor-pointer block w-20 h-20 rounded-full border-2 border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100 overflow-hidden relative flex items-center justify-center text-slate-400 shrink-0">
-                                <img id="regPreview" src="" alt="" class="hidden w-full h-full object-cover">
-                                <i id="regPlaceholder" data-lucide="camera" class="w-7 h-7 text-slate-500"></i>
-                            </label>
-                            <input type="file" id="regImage" accept="image/*" onchange="processProfilePhoto(event)" class="hidden">
-                            <p class="text-xs font-bold text-slate-600" data-i18n="authPhotoHint">صورتك الشخصية (اختياري)</p>
-                        </div>
-                        <div>
-                            <label class="block text-xs font-bold text-slate-700 mb-1.5" data-i18n="authName">الاسم الكامل</label>
-                            <input type="text" id="regName" autocomplete="name" required maxlength="40"
-                                class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-3 text-sm font-bold focus:outline-none focus:border-emerald-600 focus:bg-white">
-                        </div>
-                        <div>
-                            <label class="block text-xs font-bold text-slate-700 mb-1.5" data-i18n="authPhone">رقم الهاتف</label>
-                            <input type="tel" id="regPhone" dir="ltr" inputmode="tel" autocomplete="tel" required
-                                class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-3 text-sm font-bold focus:outline-none focus:border-emerald-600 focus:bg-white">
-                        </div>
-                        <div class="grid grid-cols-2 gap-2.5">
-                            <div>
-                                <label class="block text-xs font-bold text-slate-700 mb-1.5" data-i18n="authPass">كلمة المرور</label>
-                                <input type="password" id="regPass" dir="ltr" autocomplete="new-password" required
-                                    class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-3 text-sm font-bold focus:outline-none focus:border-emerald-600 focus:bg-white">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-bold text-slate-700 mb-1.5" data-i18n="authPass2">تأكيد كلمة المرور</label>
-                                <input type="password" id="regPass2" dir="ltr" autocomplete="new-password" required
-                                    class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-3 text-sm font-bold focus:outline-none focus:border-emerald-600 focus:bg-white">
-                            </div>
-                        </div>
-                        <button type="submit" id="registerSubmit" class="w-full bg-emerald-600 hover:bg-emerald-700 active:scale-95 transition text-white font-extrabold py-3.5 rounded-2xl text-base shadow-lg shadow-emerald-600/20" data-i18n="authRegisterBtn">إنشاء الحساب</button>
+                        <button type="button" onclick="doForgot()" class="w-full text-xs font-bold text-slate-500 hover:text-slate-800 py-1" data-i18n="authForgot">نسيت كلمة المرور؟</button>
                     </form>
                 </div>
             </div>
@@ -779,6 +814,14 @@ const FIREBASE_CONFIG = {
 // ==========================================
 // بيانات مضمّنة
 // ==========================================
+// ==========================================================
+// 🔐 إعدادات الحسابات
+// 1) ضع إيميل المدير (أنت) هنا. هذا الحساب ينشئ حسابات الموظفين.
+// 2) أنشئ حساب المدير من Firebase Console > Authentication > Users > Add user
+// 3) الصق قواعد Firestore (موجودة في الشرح) وانشرها.
+// ==========================================================
+const ADMIN_EMAILS = ['admin@example.com'];
+
 const EMBEDDED_DATA = {
     version: 2,
     exportedAt: "2025-01-01T00:00:00.000Z",
@@ -934,7 +977,33 @@ const I18N = {
         scanVerifying: (a, b) => `جاري التحقق من القراءة... (${a}/${b})`,
         scanRejected: 'قراءة غير واضحة — تم تجاهلها. قرّب الكاميرا وثبّتها',
         scanOk: '✅ تمت القراءة بنجاح',
-        barcodeBad: '⚠️ الرقم لا يطابق فحص الخانة الأخيرة — قد يكون خاطئاً، راجعه.'
+        barcodeBad: '⚠️ الرقم لا يطابق فحص الخانة الأخيرة — قد يكون خاطئاً، راجعه.',
+        // السعر والحذف
+        priceLabel: 'السعر (اختياري)', priceShort: 'السعر', price: 'السعر:', totalValue: 'القيمة', field_price: 'السعر',
+        histTotalValue: 'قيمة المصرّف',
+        deleteBtn: 'حذف', deleteDone: 'تم حذف المنتج نهائياً', codeTitleDelete: '🔒 أدخل الرمز لحذف المنتج',
+        pinTitleDefault: 'أدخل الرمز للمتابعة', codeWrong: 'الرمز غير صحيح', codeEnter: 'دخول',
+        // الدخول بالإيميل
+        authSub: 'الدخول للموظفين المصرّح لهم فقط', authSignInTitle: 'تسجيل الدخول', authEmail: 'البريد الإلكتروني',
+        authFillAll: 'أدخل البريد الإلكتروني وكلمة المرور', authBadLogin: 'البريد الإلكتروني أو كلمة المرور غير صحيحة',
+        authEmailBad: 'البريد الإلكتروني غير صالح', authTooMany: 'محاولات كثيرة، انتظر قليلاً ثم أعد المحاولة',
+        authDisabled: 'هذا الحساب موقوف', authProviderOff: 'تسجيل الدخول بالإيميل غير مفعّل في Firebase (فعّل Email/Password)',
+        authNotAllowed: 'هذا الحساب غير مصرّح له بدخول هذا المحل. تواصل مع المدير.',
+        authFirebaseMissing: 'تعذر تحميل Firebase. تأكد من الإنترنت وإعدادات Firebase.',
+        authChecking: 'جاري التحقق من الحساب...', authForgot: 'نسيت كلمة المرور؟',
+        authResetSent: 'إذا كان البريد مسجلاً، تم إرسال رابط إعادة التعيين إليه',
+        authNetError: 'تعذر الاتصال. تحقق من الإنترنت وقواعد Firestore.',
+        loggedOutForced: 'انتهت صلاحية دخولك لهذا المحل. تم تسجيل الخروج.',
+        // إدارة الحسابات
+        usersMenu: 'إدارة الحسابات', usersTitle: 'إدارة حسابات الموظفين', usersAddTitle: 'إضافة موظف جديد',
+        usersName: 'اسم الموظف', usersPass: 'كلمة مرور مبدئية', usersGen: 'توليد', usersCreateBtn: 'إنشاء الحساب',
+        usersCredTitle: 'بيانات الدخول (أرسلها للموظف)', usersCopyCred: 'نسخ البيانات', usersAppLink: 'رابط التطبيق',
+        usersAdminRole: 'مدير', usersStaffRole: 'موظف', usersCreated: 'تم إنشاء الحساب بنجاح',
+        usersRemoveTitle: 'إزالة الموظف؟', usersRemoveMsg: (n) => `سيفقد "${n}" القدرة على دخول التطبيق فوراً.`,
+        usersRemoved: 'تمت إزالة صلاحية الموظف', usersReset: 'إرسال رابط تغيير كلمة المرور', usersResetSent: 'تم إرسال رابط تغيير كلمة المرور',
+        usersExistsNote: 'هذا البريد مسجّل مسبقاً — تم منحه الصلاحية من جديد، وكلمة مروره السابقة لم تتغير (استخدم زر تغيير كلمة المرور إن لزم).',
+        usersEmailExists: 'هذا البريد مسجّل مسبقاً', usersPermission: 'ليست لديك صلاحية لهذه العملية (راجع قواعد Firestore)',
+        usersEmpty: 'لا يوجد موظفون بعد', photoUpdated: 'تم تحديث صورتك'
     },
     en: {
         menuBackup: 'Backup', menuLang: 'Language', menuTheme: 'Dark / Light mode',
@@ -1083,7 +1152,33 @@ const I18N = {
         scanVerifying: (a, b) => `Verifying read... (${a}/${b})`,
         scanRejected: 'Unclear read — ignored. Move closer and hold steady',
         scanOk: '✅ Read successfully',
-        barcodeBad: '⚠️ Number fails the check-digit test — it may be wrong, please review.'
+        barcodeBad: '⚠️ Number fails the check-digit test — it may be wrong, please review.',
+        // Price & delete
+        priceLabel: 'Price (optional)', priceShort: 'Price', price: 'Price:', totalValue: 'Value', field_price: 'price',
+        histTotalValue: 'Disposed value',
+        deleteBtn: 'Delete', deleteDone: 'Product permanently deleted', codeTitleDelete: '🔒 Enter the code to delete the product',
+        pinTitleDefault: 'Enter the code to continue', codeWrong: 'Wrong code', codeEnter: 'Enter',
+        // Email login
+        authSub: 'Authorized staff only', authSignInTitle: 'Log in', authEmail: 'Email',
+        authFillAll: 'Enter email and password', authBadLogin: 'Wrong email or password',
+        authEmailBad: 'Invalid email address', authTooMany: 'Too many attempts, wait a moment and try again',
+        authDisabled: 'This account is disabled', authProviderOff: 'Email/Password sign-in is not enabled in Firebase',
+        authNotAllowed: 'This account is not authorized for this shop. Contact the manager.',
+        authFirebaseMissing: 'Could not load Firebase. Check internet and Firebase settings.',
+        authChecking: 'Checking account...', authForgot: 'Forgot password?',
+        authResetSent: 'If the email is registered, a reset link has been sent',
+        authNetError: 'Could not connect. Check internet and Firestore rules.',
+        loggedOutForced: 'Your access to this shop ended. Logged out.',
+        // Accounts admin
+        usersMenu: 'Manage accounts', usersTitle: 'Staff accounts', usersAddTitle: 'Add new staff member',
+        usersName: 'Staff name', usersPass: 'Initial password', usersGen: 'Generate', usersCreateBtn: 'Create account',
+        usersCredTitle: 'Login details (send to the employee)', usersCopyCred: 'Copy details', usersAppLink: 'App link',
+        usersAdminRole: 'Admin', usersStaffRole: 'Staff', usersCreated: 'Account created successfully',
+        usersRemoveTitle: 'Remove staff member?', usersRemoveMsg: (n) => `"${n}" will lose access to the app immediately.`,
+        usersRemoved: 'Staff access removed', usersReset: 'Send password reset link', usersResetSent: 'Password reset link sent',
+        usersExistsNote: 'This email already exists — access was granted again, its previous password is unchanged (use the reset button if needed).',
+        usersEmailExists: 'This email is already registered', usersPermission: 'You do not have permission for this (check Firestore rules)',
+        usersEmpty: 'No staff yet', photoUpdated: 'Photo updated'
     }
 };
 
@@ -1111,6 +1206,8 @@ let shopId = 'main';
 let legacyLocal = { batches: [], catalog: {} };
 let migrationChecked = false;
 let syncState = 'local';
+let auth = null, unsubs = [], pendingAuthError = '', loginFlag = false, authHandling = 0, loggingOut = false;
+let lastCredText = '', usersListIds = [];
 
 // ===== المستخدمون وسجل التصريف =====
 let usersMap = {};        // id -> {id,name,phone,photo}  (للعرض فقط)
@@ -1134,24 +1231,14 @@ window.onload = function() {
     loadPreferences();
     initShopId();
     cloudEnabled = isConfigFilled() && typeof firebase !== 'undefined';
-    loadLocalUsers();
-    if (cloudEnabled) {
-        readLegacyLocal();
-        batches = []; catalog = {}; histRecs = [];
-    } else {
-        loadData();
-        loadHistoryLocal();
-        usersMap = publicUsers(localUsers);
-    }
+    if (cloudEnabled) readLegacyLocal();
     applyLanguage();
     applyTheme();
     restoreFilters();
     lucide.createIcons();
     renderBatches();
-    triggerAlertCheck(false);
     bindFormDraft();
     initAuth();
-    if (cloudEnabled) initCloud(); else updateSyncBadge('local');
 };
 
 // ==========================================
@@ -1197,26 +1284,31 @@ function readLegacyLocal() {
 function shopRef() { return db.collection('shops').doc(shopId); }
 function clean(o) { return JSON.parse(JSON.stringify(o)); }
 
-function initCloud() {
+function initFirebase() {
     try {
-        firebase.initializeApp(FIREBASE_CONFIG);
+        if (typeof firebase === 'undefined' || typeof firebase.auth !== 'function') return false;
+        if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
         db = firebase.firestore();
         db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
-        const base = shopRef();
-        base.collection('batches').onSnapshot(onBatchesSnapshot, onSyncError);
-        base.collection('catalog').onSnapshot(onCatalogSnapshot, onSyncError);
-        base.collection('users').onSnapshot(onUsersSnapshot, onSyncError);
-        base.collection('history').orderBy('at', 'desc').limit(1000).onSnapshot(onHistorySnapshot, onSyncError);
-        updateSyncBadge('offline');
-    } catch (e) {
-        console.error(e);
-        cloudEnabled = false;
-        loadData();
-        loadHistoryLocal();
-        usersMap = publicUsers(localUsers);
-        renderBatches();
-        updateSyncBadge('error');
-    }
+        auth = firebase.auth();
+        return true;
+    } catch (e) { console.error(e); return false; }
+}
+
+// تبدأ الاستماع للبيانات فقط بعد تسجيل دخول مصرّح به
+function startListeners() {
+    stopListeners();
+    const base = shopRef();
+    unsubs.push(base.collection('batches').onSnapshot(onBatchesSnapshot, onSyncError));
+    unsubs.push(base.collection('catalog').onSnapshot(onCatalogSnapshot, onSyncError));
+    unsubs.push(base.collection('users').onSnapshot(onUsersSnapshot, onSyncError));
+    unsubs.push(base.collection('history').orderBy('at', 'desc').limit(1000).onSnapshot(onHistorySnapshot, onSyncError));
+    updateSyncBadge('offline');
+}
+
+function stopListeners() {
+    unsubs.forEach(u => { try { u(); } catch (e) {} });
+    unsubs = [];
 }
 
 function onBatchesSnapshot(snap) {
@@ -1244,13 +1336,18 @@ function onCatalogSnapshot(snap) {
         const v = d.data();
         let code = v.barcode;
         if (!code) { try { code = decodeURIComponent(d.id); } catch (e) { code = d.id; } }
-        obj[code] = { name: v.name, category: v.category, image: v.image, alertDays: v.alertDays };
+        obj[code] = { name: v.name, category: v.category, image: v.image, alertDays: v.alertDays, price: v.price };
     });
     catalog = obj;
 }
 
 function onSyncError(err) {
     console.error('Sync error', err);
+    if (err && err.code === 'permission-denied' && currentUser) {
+        if (isAdmin()) { updateSyncBadge('error'); showToast(t('usersPermission'), 'error'); return; }
+        doLogout(true);
+        return;
+    }
     updateSyncBadge('error');
     showToast(t('writeError'), 'error');
 }
@@ -1422,7 +1519,7 @@ function saveFilters() {
 }
 
 function bindFormDraft() {
-    ['inputBarcode','inputName','inputCategory','inputExpiry','inputQty','inputAlertDays','inputEntryDate'].forEach(id => {
+    ['inputBarcode','inputName','inputCategory','inputExpiry','inputQty','inputAlertDays','inputEntryDate','inputPrice'].forEach(id => {
         const el = document.getElementById(id);
         if (el) { el.addEventListener('input', saveFormDraft); el.addEventListener('change', saveFormDraft); }
     });
@@ -1431,7 +1528,7 @@ function bindFormDraft() {
 function saveFormDraft() {
     if (document.getElementById('editBatchId').value) return;
     const draft = {};
-    ['inputBarcode','inputName','inputCategory','inputExpiry','inputQty','inputAlertDays','inputEntryDate'].forEach(id => {
+    ['inputBarcode','inputName','inputCategory','inputExpiry','inputQty','inputAlertDays','inputEntryDate','inputPrice'].forEach(id => {
         const el = document.getElementById(id);
         if (el) draft[id] = el.value;
     });
@@ -1449,6 +1546,7 @@ function restoreFormDraft() {
         if (draft.inputQty) document.getElementById('inputQty').value = draft.inputQty;
         if (draft.inputAlertDays) document.getElementById('inputAlertDays').value = draft.inputAlertDays;
         if (draft.inputEntryDate) document.getElementById('inputEntryDate').value = draft.inputEntryDate;
+        if (draft.inputPrice) document.getElementById('inputPrice').value = draft.inputPrice;
         if (draft.image) setPreviewImage(draft.image);
         updateDaysPreview();
         return Object.keys(draft).length > 0 && draft.inputName;
@@ -1465,39 +1563,6 @@ function todayStr() {
 // ==========================================
 // تحميل/حفظ محلي (يُستخدم عند عدم تفعيل السحابة)
 // ==========================================
-function loadData() {
-    try {
-        const savedBatches = localStorage.getItem(STORAGE_KEYS.BATCHES);
-        const savedCatalog = localStorage.getItem(STORAGE_KEYS.CATALOG);
-        const isInitialized = localStorage.getItem(STORAGE_KEYS.INIT);
-        if (savedBatches) batches = JSON.parse(savedBatches);
-        if (savedCatalog) catalog = JSON.parse(savedCatalog);
-        batches.forEach(b => { if (!b.entryDate) b.entryDate = todayStr(); });
-        if (!isInitialized && batches.length === 0) {
-            if (EMBEDDED_DATA && Array.isArray(EMBEDDED_DATA.batches) && EMBEDDED_DATA.batches.length > 0) {
-                batches = JSON.parse(JSON.stringify(EMBEDDED_DATA.batches));
-                catalog = JSON.parse(JSON.stringify(EMBEDDED_DATA.catalog || {}));
-            } else {
-                const today = new Date();
-                const formatDate = (offsetDays) => {
-                    const d = new Date(today);
-                    d.setDate(d.getDate() + offsetDays);
-                    return d.toISOString().split('T')[0];
-                };
-                const sampleProducts = [
-                    { id: 'demo-1', barcode: '6281007041123', name: 'لبنة طازجة كاملة الدسم 400غ', category: 'dairy', expiryDate: formatDate(-2), qty: 4, alertDays: 4, image: '', entryDate: formatDate(-1) },
-                    { id: 'demo-2', barcode: '6223001360458', name: 'عصير مانجو طبيعي 1 لتر', category: 'drinks', expiryDate: formatDate(5), qty: 9, alertDays: 7, image: '', entryDate: formatDate(-1) },
-                    { id: 'demo-3', barcode: '5449000000996', name: 'فول مدمس معلب بالخلطة 450غ', category: 'canned', expiryDate: formatDate(120), qty: 24, alertDays: 15, image: '', entryDate: formatDate(0) }
-                ];
-                batches = sampleProducts;
-                sampleProducts.forEach(p => { catalog[p.barcode] = { name: p.name, category: p.category, image: p.image, alertDays: p.alertDays }; });
-            }
-            saveData();
-            localStorage.setItem(STORAGE_KEYS.INIT, 'true');
-        }
-    } catch (err) { console.error(err); showToast(t('readError'), 'error'); }
-}
-
 function loadEmbeddedData() {
     if (!EMBEDDED_DATA || !Array.isArray(EMBEDDED_DATA.batches) || EMBEDDED_DATA.batches.length === 0) {
         showToast(t('embeddedEmpty'), 'warning'); return;
@@ -1677,7 +1742,8 @@ function renderBatches() {
     emptyEl.classList.add('hidden');
     summaryEl.classList.remove('hidden');
 
-    document.getElementById('summaryText').textContent = t('summaryText', filtered.length) + (currentMonthFilter ? ' · ' + monthLabel(currentMonthFilter) : '');
+    const totalValue = filtered.reduce((sum, i) => sum + (parseFloat(i.price) || 0) * (parseInt(i.qty) || 0), 0);
+    document.getElementById('summaryText').textContent = t('summaryText', filtered.length) + (currentMonthFilter ? ' · ' + monthLabel(currentMonthFilter) : '') + (totalValue > 0 ? ' · ' + t('totalValue') + ' ' + fmtMoney(totalValue) : '');
     document.getElementById('summaryTotal').textContent = `${filtered.reduce((s, i) => s + i.qty, 0)} ${t('products')}`;
 
     const totalPages = Math.ceil(filtered.length / PER_PAGE);
@@ -1724,6 +1790,9 @@ function renderBatchCard(item) {
               ${t('entryDate')} ${item.entryDate}
            </span>`
         : '';
+    const priceHtml = parseFloat(item.price) > 0
+        ? `<span class="flex items-center gap-1 text-[11px] font-extrabold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">💰 ${fmtMoney(item.price)}</span>`
+        : '';
     const lastEditHtml = item.updatedBy
         ? `<button onclick="event.stopPropagation(); openProductDetail('${item.id}')" class="mt-1.5 flex items-center gap-1.5 text-[11px] font-bold text-slate-500 max-w-full">
               ${avatarHtml(item.updatedBy.id, item.updatedBy.name, 18)}
@@ -1743,6 +1812,7 @@ function renderBatchCard(item) {
                     <span class="text-[11px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md">${getCategoryLabel(item.category)}</span>
                     ${barcodeHtml}
                     ${entryHtml}
+                    ${priceHtml}
                 </div>
                 <div class="mt-2 flex items-center gap-1.5 text-xs font-bold text-slate-700">
                     <i data-lucide="calendar" class="w-3.5 h-3.5 text-slate-400"></i>
@@ -1758,6 +1828,9 @@ function renderBatchCard(item) {
                 <button onclick="updateBatchQty('${item.id}', 1)" class="w-8 h-8 rounded-lg bg-white shadow-xs font-extrabold text-slate-700 hover:bg-slate-200 active:scale-90 transition flex items-center justify-center">+</button>
             </div>
             <div class="flex items-center gap-1.5">
+                <button onclick="requestDeleteBatch('${item.id}')" title="${t('deleteBtn')}" class="edit-btn bg-red-600 hover:bg-red-700 text-white px-2.5 py-2 rounded-xl flex items-center active:scale-95 transition">
+                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                </button>
                 <button onclick="openEditModal('${item.id}')" class="edit-btn bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 active:scale-95 transition">
                     <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
                     <span>${t('editBtn')}</span>
@@ -1767,6 +1840,28 @@ function renderBatchCard(item) {
                     <span>${t('dispose')}</span>
                 </button>
             </div>
+        </div>
+    </div>`;
+}
+
+function fmtMoney(n) {
+    const v = parseFloat(n);
+    if (isNaN(v)) return '';
+    return v.toLocaleString('en-US', { maximumFractionDigits: 2 });
+}
+
+function priceBlockHtml(item) {
+    const p = parseFloat(item.price);
+    if (!(p > 0)) return '';
+    const total = p * (parseInt(item.qty) || 0);
+    return `<div class="grid grid-cols-2 gap-2">
+        <div class="bg-amber-50 border border-amber-200 rounded-xl p-2.5">
+            <div class="text-[10px] font-bold text-amber-700 mb-0.5">${t('priceShort')}</div>
+            <div class="text-xs font-extrabold text-amber-900" dir="ltr">${fmtMoney(p)}</div>
+        </div>
+        <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-2.5">
+            <div class="text-[10px] font-bold text-emerald-700 mb-0.5">${t('totalValue')}</div>
+            <div class="text-xs font-extrabold text-emerald-900" dir="ltr">${fmtMoney(total)}</div>
         </div>
     </div>`;
 }
@@ -1820,12 +1915,14 @@ function openProductDetail(batchId) {
                     <div class="text-xs font-extrabold text-sky-900" dir="ltr">${item.entryDate || '—'}</div>
                 </div>
             </div>
+            ${priceBlockHtml(item)}
             ${renderActivityLog(item)}
             <div class="flex gap-2 pt-1">
                 <button onclick="closeProductDetail(); openEditModal('${item.id}')" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5 active:scale-95 transition">
                     <i data-lucide="pencil" class="w-4 h-4"></i>
                     ${t('editBtn')}
                 </button>
+                <button onclick="closeProductDetail(); requestDeleteBatch('${item.id}')" title="${t('deleteBtn')}" class="bg-red-600 hover:bg-red-700 text-white font-bold px-3.5 py-2.5 rounded-xl text-xs flex items-center justify-center active:scale-95 transition"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
                 <button onclick="closeProductDetail()" class="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold py-2.5 rounded-xl text-xs active:scale-95 transition">${t('closeBtn')}</button>
             </div>
         </div>
@@ -1918,6 +2015,7 @@ function openEditModal(batchId) {
     document.getElementById('inputQty').value = item.qty;
     document.getElementById('inputAlertDays').value = item.alertDays;
     document.getElementById('inputEntryDate').value = item.entryDate || todayStr();
+    document.getElementById('inputPrice').value = (item.price != null && item.price !== '') ? item.price : '';
     if (item.image) setPreviewImage(item.image);
     else clearImage();
     document.getElementById('autoFillBanner').classList.add('hidden');
@@ -2133,6 +2231,7 @@ function handleBarcodeLookup(barcode) {
         document.getElementById('inputName').value = saved.name || '';
         document.getElementById('inputCategory').value = saved.category || 'other';
         document.getElementById('inputAlertDays').value = saved.alertDays || 7;
+        document.getElementById('inputPrice').value = (saved.price != null && saved.price !== '') ? saved.price : '';
         if (saved.image) setPreviewImage(saved.image); else clearImage();
         banner.classList.remove('hidden');
         document.getElementById('inputExpiry').focus();
@@ -2238,6 +2337,8 @@ function saveBatch(e) {
     const qty = parseInt(document.getElementById('inputQty').value) || 1;
     const alertDays = parseInt(document.getElementById('inputAlertDays').value) || 7;
     const entryDate = document.getElementById('inputEntryDate').value || todayStr();
+    const priceRaw = document.getElementById('inputPrice').value;
+    const price = priceRaw === '' ? null : Math.max(0, parseFloat(priceRaw) || 0);
     if (!name || !expiryDate) return;
 
     if (editId) {
@@ -2251,12 +2352,13 @@ function saveBatch(e) {
             if (old.expiryDate !== expiryDate) changed.push('expiryDate');
             if (parseInt(old.alertDays) !== alertDays) changed.push('alertDays');
             if ((old.entryDate || '') !== entryDate) changed.push('entryDate');
+            if ((old.price ?? null) !== price) changed.push('price');
             if ((old.image || '') !== (currentCompressedImage || '')) changed.push('image');
-            batches[idx] = { ...old, barcode, name, category, expiryDate, qty, alertDays, entryDate, image: currentCompressedImage };
+            batches[idx] = { ...old, barcode, name, category, expiryDate, qty, alertDays, entryDate, price, image: currentCompressedImage };
             if (old.qty !== qty) pushLog(batches[idx], 'qty', { from: old.qty, to: qty });
             if (changed.length) pushLog(batches[idx], 'edit', { c: changed });
             if (barcode) {
-                catalog[barcode] = { name, category, image: currentCompressedImage, alertDays };
+                catalog[barcode] = { name, category, image: currentCompressedImage, alertDays, price };
                 cloudSetCatalog(barcode, catalog[barcode]);
             }
             cloudSetBatch(batches[idx]);
@@ -2264,11 +2366,11 @@ function saveBatch(e) {
             showToast(t('editSuccess'), 'success');
         }
     } else {
-        const newBatch = { id: 'batch-' + Date.now() + '-' + Math.floor(Math.random() * 1000), barcode, name, category, expiryDate, qty, alertDays, entryDate, image: currentCompressedImage, createdBy: actor(), createdAt: nowIso(), log: [] };
+        const newBatch = { id: 'batch-' + Date.now() + '-' + Math.floor(Math.random() * 1000), barcode, name, category, expiryDate, qty, alertDays, entryDate, price, image: currentCompressedImage, createdBy: actor(), createdAt: nowIso(), log: [] };
         pushLog(newBatch, 'add', { qty });
         batches.push(newBatch);
         if (barcode) {
-            catalog[barcode] = { name, category, image: currentCompressedImage, alertDays };
+            catalog[barcode] = { name, category, image: currentCompressedImage, alertDays, price };
             cloudSetCatalog(barcode, catalog[barcode]);
         }
         cloudSetBatch(newBatch);
@@ -2364,6 +2466,19 @@ function updateBatchQty(id, delta) {
     saveData(); renderBatches();
 }
 
+// ---------- حذف المنتج (يتطلب الكود) ----------
+function requestDeleteBatch(id) {
+    if (!requireUser()) return;
+    const item = batches.find(b => b.id === id);
+    if (!item) return;
+    requestCode(t('codeTitleDelete'), () => {
+        batches = batches.filter(b => b.id !== id);
+        cloudDeleteBatch(id);
+        saveData(); renderBatches();
+        showToast(t('deleteDone'), 'success');
+    });
+}
+
 // ---------- التصريف ----------
 function disposeBatch(id) {
     if (!requireUser()) return;
@@ -2401,7 +2516,7 @@ function confirmDispose() {
         id: 'h-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
         batchId: item.id, barcode: item.barcode || '', name: item.name, category: item.category,
         image: item.image || '', expiryDate: item.expiryDate, entryDate: item.entryDate || '',
-        alertDays: item.alertDays, qty: n, totalQty: item.qty, st: st.key,
+        alertDays: item.alertDays, price: item.price ?? null, qty: n, totalQty: item.qty, st: st.key,
         by: actor(), at: nowIso(),
         createdBy: item.createdBy || null, createdAt: item.createdAt || '', log: Array.isArray(item.log) ? item.log : []
     };
@@ -2505,6 +2620,7 @@ function renderHistory() {
     const list = userSel === 'all' ? base : base.filter(h => h.by && h.by.id === userSel);
 
     const totalQty = list.reduce((s, h) => s + (parseInt(h.qty) || 0), 0);
+    const totalValue = list.reduce((s, h) => s + (parseFloat(h.price) || 0) * (parseInt(h.qty) || 0), 0);
     document.getElementById('historySummary').innerHTML = `
         <div class="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 text-center">
             <div class="text-xl font-extrabold text-emerald-700">${list.length}</div>
@@ -2513,6 +2629,10 @@ function renderHistory() {
         <div class="bg-sky-50 border border-sky-200 rounded-2xl p-3 text-center">
             <div class="text-xl font-extrabold text-sky-700">${totalQty}</div>
             <div class="text-[11px] font-bold text-sky-800">${t('histTotalQty')}</div>
+        </div>
+        <div class="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-center">
+            <div class="text-xl font-extrabold text-amber-700">${fmtMoney(totalValue)}</div>
+            <div class="text-[11px] font-bold text-amber-800">${t('histTotalValue')}</div>
         </div>`;
 
     const perUser = {};
@@ -2551,6 +2671,7 @@ function renderHistory() {
                     <div class="flex flex-wrap items-center gap-1.5 mt-1">
                         <span class="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md">${getCategoryLabel(h.category)}</span>
                         ${stChip}
+                        ${parseFloat(h.price) > 0 ? `<span class="text-[10px] font-extrabold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-md">💰 ${fmtMoney(h.price)}</span>` : ''}
                         ${h.barcode ? `<span class="text-[10px] font-mono bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md">${escapeHtml(h.barcode)}</span>` : ''}
                     </div>
                     <div class="flex items-center gap-1.5 mt-1.5 text-[11px] font-bold text-slate-600">
@@ -2582,7 +2703,7 @@ function restoreFromHistory(hid) {
         } else {
             const nb = {
                 id: rec.batchId, barcode: rec.barcode || '', name: rec.name, category: rec.category,
-                expiryDate: rec.expiryDate, qty: rec.qty, alertDays: rec.alertDays || 7, image: rec.image || '',
+                expiryDate: rec.expiryDate, qty: rec.qty, alertDays: rec.alertDays || 7, price: rec.price ?? null, image: rec.image || '',
                 entryDate: rec.entryDate || todayStr(), createdBy: rec.createdBy || rec.by || actor(),
                 createdAt: rec.createdAt || nowIso(), log: Array.isArray(rec.log) ? rec.log.slice() : []
             };
@@ -2604,6 +2725,8 @@ function prepareHistoryExport() {
         [ar ? 'اسم الصنف' : 'Product Name']: h.name,
         [ar ? 'القسم' : 'Category']: getCategoryLabel(h.category),
         [ar ? 'الكمية المصرّفة' : 'Qty Disposed']: h.qty,
+        [ar ? 'السعر' : 'Price']: (h.price != null && h.price !== '') ? h.price : '',
+        [ar ? 'القيمة الإجمالية' : 'Total Value']: parseFloat(h.price) > 0 ? parseFloat(h.price) * (parseInt(h.qty) || 0) : '',
         [ar ? 'تاريخ الانتهاء' : 'Expiry Date']: h.expiryDate,
         [ar ? 'الحالة وقت التصريف' : 'State at disposal']: h.st === 'expired' ? t('histExpired') : t('histEarly'),
         [ar ? 'صرّفها' : 'Disposed By']: h.by ? userName(h.by.id, h.by.name) : '',
@@ -2614,207 +2737,228 @@ function prepareHistoryExport() {
 // ==========================================
 // الحسابات (تسجيل / دخول)
 // ==========================================
-function onUsersSnapshot(snap) {
-    const m = {};
-    snap.forEach(d => { const v = d.data(); m[d.id] = { id: d.id, name: v.name, phone: v.phone, photo: v.photo || '' }; });
-    usersMap = m;
-    if (currentUser) {
-        if (usersMap[currentUser.id]) { currentUser = { ...usersMap[currentUser.id] }; persistSession(); }
-        else if (!snap.metadata.fromCache) { doLogout(true); return; }
-    }
-    renderUserBar(); renderBatches();
-    if (!document.getElementById('historyModal').classList.contains('hidden')) renderHistory();
-}
-
-function loadLocalUsers() {
-    try { localUsers = JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS) || '{}') || {}; } catch (e) { localUsers = {}; }
-}
-function saveLocalUsers() {
-    try { localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(localUsers)); } catch (e) { showToast(t('storageError'), 'error'); }
-}
-function publicUsers(src) {
-    const m = {};
-    Object.values(src).forEach(u => { m[u.id] = { id: u.id, name: u.name, phone: u.phone, photo: u.photo || '' }; });
-    return m;
-}
-
-function normalizePhone(s) {
-    return String(s || '')
-        .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
-        .replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d))
-        .replace(/\D/g, '');
-}
-function randomSalt() {
-    const a = new Uint8Array(16);
-    (window.crypto || window.msCrypto).getRandomValues(a);
-    return Array.from(a).map(b => b.toString(16).padStart(2, '0')).join('');
-}
-function simpleHash(str) {
-    let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
-    for (let i = 0; i < str.length; i++) { const ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); }
-    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-    return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16);
-}
-async function hashPassword(salt, pw) {
-    const s = salt + ':' + pw;
-    try { return await sha256Hex(s); } catch (e) { return 'x' + simpleHash(s); }
-}
+function normEmail(x) { return String(x || '').trim().toLowerCase(); }
+const ADMIN_EMAILS_LC = ADMIN_EMAILS.map(normEmail);
+function isAdminEmail(e) { return ADMIN_EMAILS_LC.includes(normEmail(e)); }
+function isAdmin() { return !!(currentUser && isAdminEmail(currentUser.email)); }
+function validEmail(x) { return /^[^\s@\/]+@[^\s@\/]+\.[^\s@\/]+$/.test(x); }
 function withTimeout(p, ms) {
     return Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
 }
 
-async function fetchProfile(id) {
-    if (cloudEnabled && db) {
-        const d = await shopRef().collection('users').doc(id).get();
-        if (!d.exists) return null;
+function authErrorText(err) {
+    const c = (err && err.code) || '';
+    if (['auth/invalid-credential', 'auth/wrong-password', 'auth/user-not-found', 'auth/invalid-login-credentials'].includes(c)) return t('authBadLogin');
+    if (c === 'auth/invalid-email') return t('authEmailBad');
+    if (c === 'auth/too-many-requests') return t('authTooMany');
+    if (c === 'auth/user-disabled') return t('authDisabled');
+    if (c === 'auth/network-request-failed') return t('authNetError');
+    if (c === 'auth/operation-not-allowed' || c === 'auth/admin-restricted-operation') return t('authProviderOff');
+    if (c === 'auth/weak-password') return t('authPassShort');
+    if (c === 'auth/email-already-in-use') return t('usersEmailExists');
+    if (c === 'permission-denied') return t('usersPermission');
+    return t('authNetError') + (c ? ' (' + c + ')' : '');
+}
+
+function onUsersSnapshot(snap) {
+    const m = {};
+    snap.forEach(d => {
         const v = d.data();
-        return { id, name: v.name, phone: v.phone, photo: v.photo || '' };
+        m[d.id] = { id: d.id, name: v.name || d.id, email: v.email || d.id, photo: v.photo || '', role: v.role || 'staff' };
+    });
+    usersMap = m;
+    if (currentUser) {
+        if (usersMap[currentUser.id]) currentUser = { ...currentUser, ...usersMap[currentUser.id] };
+        else if (!snap.metadata.fromCache && !isAdmin()) { doLogout(true); return; }
     }
-    const u = localUsers[id];
-    return u ? { id: u.id, name: u.name, phone: u.phone, photo: u.photo || '' } : null;
-}
-async function fetchCreds(id) {
-    if (cloudEnabled && db) {
-        const d = await shopRef().collection('creds').doc(id).get();
-        return d.exists ? d.data() : null;
-    }
-    const u = localUsers[id];
-    return u ? { salt: u.salt, hash: u.hash } : null;
-}
-async function saveNewUser(prof, creds) {
-    if (cloudEnabled && db) {
-        const base = shopRef();
-        await db.runTransaction(async tx => {
-            const uRef = base.collection('users').doc(prof.id);
-            const s = await tx.get(uRef);
-            if (s.exists) throw new Error('EXISTS');
-            tx.set(uRef, clean(prof));
-            tx.set(base.collection('creds').doc(prof.id), clean(creds));
-        });
-    } else {
-        if (localUsers[prof.id]) throw new Error('EXISTS');
-        localUsers[prof.id] = { ...prof, ...creds };
-        saveLocalUsers();
-        usersMap = publicUsers(localUsers);
-    }
+    renderUserBar(); renderBatches();
+    if (!document.getElementById('historyModal').classList.contains('hidden')) renderHistory();
+    if (!document.getElementById('usersModal').classList.contains('hidden')) renderUsersModal();
 }
 
-function persistSession() {
-    try { localStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(currentUser)); } catch (e) {}
-}
-
+// ---------- حالة الدخول ----------
 function initAuth() {
-    try {
-        const s = JSON.parse(localStorage.getItem(STORAGE_KEYS.SESSION) || 'null');
-        if (s && s.id) currentUser = s;
-    } catch (e) {}
-    if (currentUser && !cloudEnabled) {
-        currentUser = usersMap[currentUser.id] ? { ...usersMap[currentUser.id] } : null;
+    let msg = '';
+    try { msg = sessionStorage.getItem('sm_logout_msg') || ''; sessionStorage.removeItem('sm_logout_msg'); } catch (e) {}
+    if (msg === 'forced') pendingAuthError = t('loggedOutForced');
+    if (!cloudEnabled || !initFirebase()) {
+        pendingAuthError = t('authFirebaseMissing');
+        updateSyncBadge('error');
+        showLoginUI();
+        return;
     }
-    setAuthMode('login');
-    updateAuthVisibility();
+    updateSyncBadge('offline');
+    setAuthChecking(true);
+    auth.onAuthStateChanged(handleAuthState);
 }
 
-function updateAuthVisibility() {
-    const el = document.getElementById('authScreen');
-    if (currentUser) { el.classList.add('hidden'); document.body.style.overflow = ''; }
-    else { el.classList.remove('hidden'); document.body.style.overflow = 'hidden'; }
+function setAuthChecking(b) {
+    document.getElementById('authChecking').classList.toggle('hidden', !b);
+    document.getElementById('authCard').classList.toggle('hidden', b);
+}
+
+function showLoginUI() {
+    setAuthChecking(false);
+    document.getElementById('authScreen').classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+    setAuthError(pendingAuthError);
+    pendingAuthError = '';
     renderUserBar();
     lucide.createIcons();
 }
 
-function renderUserBar() {
-    const el = document.getElementById('userChip');
-    if (!el) return;
-    if (!currentUser) { el.innerHTML = ''; return; }
-    el.innerHTML = `${avatarHtml(currentUser.id, currentUser.name, 30)}
-        <div class="min-w-0 leading-tight">
-            <div class="text-xs font-extrabold text-white truncate">${escapeHtml(currentUser.name)}</div>
-            <div class="text-[10px] text-slate-400" dir="ltr">${escapeHtml(currentUser.phone || '')}</div>
-        </div>`;
+function hideAuthScreen() {
+    document.getElementById('authScreen').classList.add('hidden');
+    document.body.style.overflow = '';
+    try { document.getElementById('loginForm').reset(); } catch (e) {}
+    setAuthError('');
+    renderUserBar();
 }
 
-function setAuthMode(mode) {
-    authMode = mode;
-    const isLogin = mode === 'login';
-    document.getElementById('loginForm').classList.toggle('hidden', !isLogin);
-    document.getElementById('registerForm').classList.toggle('hidden', isLogin);
-    document.getElementById('tabLogin').className = 'py-2.5 rounded-xl text-sm font-extrabold ' + (isLogin ? 'bg-slate-900 text-white shadow' : 'text-slate-600');
-    document.getElementById('tabRegister').className = 'py-2.5 rounded-xl text-sm font-extrabold ' + (!isLogin ? 'bg-slate-900 text-white shadow' : 'text-slate-600');
-    setAuthError('');
+function updateAuthVisibility() {
+    if (currentUser) hideAuthScreen(); else showLoginUI();
 }
+
+async function handleAuthState(fbUser) {
+    const token = ++authHandling;
+    if (!fbUser) {
+        stopListeners();
+        currentUser = null;
+        showLoginUI();
+        return;
+    }
+    setAuthChecking(true);
+    const email = normEmail(fbUser.email);
+    const fallbackName = fbUser.displayName || email.split('@')[0] || email;
+    let prof = null, denied = false;
+    try {
+        const ref = shopRef().collection('users').doc(email);
+        let snap = null;
+        try { snap = await withTimeout(ref.get(), 15000); }
+        catch (e) { if (e && e.code === 'permission-denied') denied = true; else throw e; }
+        if (token !== authHandling) return;
+        if (snap && snap.exists) {
+            const v = snap.data();
+            prof = { id: email, email, name: v.name || fallbackName, photo: v.photo || '', role: v.role || (isAdminEmail(email) ? 'admin' : 'staff') };
+            denied = false;
+        } else if (isAdminEmail(email)) {
+            // أول دخول للمدير: ننشئ ملفه الشخصي
+            prof = { id: email, email, name: fallbackName, photo: '', role: 'admin' };
+            await ref.set(clean({ ...prof, createdAt: nowIso() }));
+            denied = false;
+        } else {
+            denied = true;
+        }
+    } catch (e) {
+        console.error(e);
+        if (token !== authHandling) return;
+        // تعذر التحقق (انقطاع إنترنت): نكمل مؤقتاً، وأي رفض لاحق من القواعد يخرجه تلقائياً
+        prof = { id: email, email, name: fallbackName, photo: '', role: isAdminEmail(email) ? 'admin' : 'staff' };
+        denied = false;
+    }
+    if (denied || !prof) {
+        pendingAuthError = t('authNotAllowed');
+        try { await auth.signOut(); } catch (e) {}
+        return;
+    }
+    currentUser = prof;
+    if (!usersMap[prof.id]) usersMap[prof.id] = { ...prof };
+    hideAuthScreen();
+    startListeners();
+    renderBatches();
+    if (loginFlag) { loginFlag = false; showToast(t('welcomeUser', prof.name), 'success'); }
+}
+
 function setAuthError(msg) {
     const el = document.getElementById('authError');
     el.textContent = msg || '';
     el.classList.toggle('hidden', !msg);
 }
 function setAuthBusy(busy) {
-    ['loginSubmit', 'registerSubmit'].forEach(id => {
-        const b = document.getElementById(id);
-        b.disabled = busy;
-        b.classList.toggle('opacity-60', busy);
-    });
+    const b = document.getElementById('loginSubmit');
+    b.disabled = busy;
+    b.classList.toggle('opacity-60', busy);
 }
 
-function loginAs(u) {
-    currentUser = { id: u.id, name: u.name, phone: u.phone, photo: u.photo || '' };
-    usersMap[u.id] = { ...currentUser };
-    persistSession();
-    document.getElementById('loginForm').reset();
-    resetRegForm();
-    updateAuthVisibility();
-    renderBatches();
-    showToast(t('welcomeUser', currentUser.name), 'success');
+function togglePass(id, btn) {
+    const el = document.getElementById(id);
+    const show = el.type === 'password';
+    el.type = show ? 'text' : 'password';
+    const ic = btn.querySelector('i,svg');
+    if (ic) { btn.innerHTML = `<i data-lucide="${show ? 'eye-off' : 'eye'}" class="w-5 h-5"></i>`; lucide.createIcons(); }
 }
 
 async function doLogin(e) {
     e.preventDefault();
-    const phone = normalizePhone(getVal('loginPhone'));
+    const email = normEmail(getVal('loginEmail'));
     const pw = getVal('loginPass');
     setAuthError('');
-    if (!phone || !pw) { setAuthError(t('authFillAll')); return; }
+    if (!email || !pw) { setAuthError(t('authFillAll')); return; }
+    if (!validEmail(email)) { setAuthError(t('authEmailBad')); return; }
+    if (!auth) { setAuthError(t('authFirebaseMissing')); return; }
     setAuthBusy(true);
+    loginFlag = true;
     try {
-        const creds = await withTimeout(fetchCreds(phone), 12000);
-        if (!creds) { setAuthError(t('authBadLogin')); return; }
-        const h = await hashPassword(creds.salt, pw);
-        if (h !== creds.hash) { setAuthError(t('authBadLogin')); return; }
-        const prof = await withTimeout(fetchProfile(phone), 12000);
-        loginAs(prof || { id: phone, name: phone, phone, photo: '' });
+        await auth.signInWithEmailAndPassword(email, pw);
     } catch (err) {
         console.error(err);
-        setAuthError(t('authNetError'));
+        loginFlag = false;
+        setAuthError(authErrorText(err));
     } finally { setAuthBusy(false); }
 }
 
-async function doRegister(e) {
-    e.preventDefault();
-    const name = getVal('regName').trim();
-    const phone = normalizePhone(getVal('regPhone'));
-    const pw = getVal('regPass');
-    const pw2 = getVal('regPass2');
+async function doForgot() {
+    const email = normEmail(getVal('loginEmail'));
     setAuthError('');
-    if (name.length < 2) { setAuthError(t('authNameShort')); return; }
-    if (phone.length < 6 || phone.length > 15) { setAuthError(t('authPhoneBad')); return; }
-    if (pw.length < 6) { setAuthError(t('authPassShort')); return; }
-    if (pw !== pw2) { setAuthError(t('authPassMismatch')); return; }
-    setAuthBusy(true);
+    if (!validEmail(email)) { setAuthError(t('authEmailBad')); return; }
+    if (!auth) { setAuthError(t('authFirebaseMissing')); return; }
     try {
-        const salt = randomSalt();
-        const hash = await hashPassword(salt, pw);
-        const prof = { id: phone, name, phone, photo: regPhoto || '', createdAt: nowIso() };
-        await withTimeout(saveNewUser(prof, { salt, hash }), 15000);
-        loginAs(prof);
+        await auth.sendPasswordResetEmail(email);
+        showToast(t('authResetSent'), 'success');
     } catch (err) {
-        console.error(err);
-        setAuthError(err && err.message === 'EXISTS' ? t('authPhoneExists') : t('authNetError'));
-    } finally { setAuthBusy(false); }
+        if (err && err.code === 'auth/user-not-found') { showToast(t('authResetSent'), 'success'); return; }
+        setAuthError(authErrorText(err));
+    }
 }
 
-function processProfilePhoto(event) {
+function requestLogout() {
+    openConfirmDialog(t('logoutTitle'), t('logoutMsg'), () => doLogout(false));
+}
+
+async function doLogout(forced) {
+    if (loggingOut) return;
+    loggingOut = true;
+    stopListeners();
+    currentUser = null;
+    ['productDetailModal', 'addModal', 'backupModal', 'aiModal', 'historyModal', 'disposeModal', 'imageViewer', 'pinModal', 'drawerOverlay', 'usersModal'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.classList.add('hidden');
+    });
+    try { sessionStorage.setItem('sm_logout_msg', forced ? 'forced' : ''); } catch (e) {}
+    try { if (auth) await auth.signOut(); } catch (e) {}
+    // مسح نسخة البيانات المخزّنة على الجهاز حتى لا تبقى بعد الخروج
+    try { if (db) { await db.terminate(); await db.clearPersistence(); } } catch (e) {}
+    location.reload();
+}
+
+function renderUserBar() {
+    const wrap = document.getElementById('adminMenuWrap');
+    if (wrap) wrap.classList.toggle('hidden', !isAdmin());
+    const el = document.getElementById('userChip');
+    if (!el) return;
+    if (!currentUser) { el.innerHTML = ''; return; }
+    el.innerHTML = `${avatarHtml(currentUser.id, currentUser.name, 30)}
+        <div class="min-w-0 leading-tight flex-1">
+            <div class="text-xs font-extrabold text-white truncate">${escapeHtml(currentUser.name)}${isAdmin() ? ` <span class="text-[9px] bg-emerald-500 text-slate-900 px-1.5 py-0.5 rounded-md align-middle">${t('usersAdminRole')}</span>` : ''}</div>
+            <div class="text-[10px] text-slate-400 truncate" dir="ltr">${escapeHtml(currentUser.email || '')}</div>
+        </div>
+        <i data-lucide="camera" class="w-4 h-4 text-slate-400 shrink-0"></i>`;
+    lucide.createIcons();
+}
+
+function changeMyPhoto(event) {
     const file = event.target.files[0];
-    if (!file) return;
+    event.target.value = '';
+    if (!file || !currentUser || !db) return;
     const reader = new FileReader();
     reader.onload = function(e) {
         const img = new Image();
@@ -2825,39 +2969,141 @@ function processProfilePhoto(event) {
             const ctx = canvas.getContext('2d');
             const m = Math.min(img.width, img.height);
             ctx.drawImage(img, (img.width - m) / 2, (img.height - m) / 2, m, m, 0, 0, SIZE, SIZE);
-            regPhoto = canvas.toDataURL('image/jpeg', 0.7);
-            const pv = document.getElementById('regPreview');
-            pv.src = regPhoto; pv.classList.remove('hidden');
-            document.getElementById('regPlaceholder').classList.add('hidden');
+            const data = canvas.toDataURL('image/jpeg', 0.7);
+            shopRef().collection('users').doc(currentUser.id).update({ photo: data })
+                .then(() => { currentUser.photo = data; renderUserBar(); showToast(t('photoUpdated'), 'success'); })
+                .catch(onWriteError);
         };
         img.src = e.target.result;
     };
     reader.readAsDataURL(file);
 }
 
-function resetRegForm() {
-    regPhoto = '';
-    const f = document.getElementById('registerForm');
-    if (f) f.reset();
-    const pv = document.getElementById('regPreview');
-    if (pv) { pv.src = ''; pv.classList.add('hidden'); }
-    const ph = document.getElementById('regPlaceholder');
-    if (ph) ph.classList.remove('hidden');
+// ---------- لوحة المدير: إنشاء وإدارة حسابات الموظفين ----------
+function secondaryAuth() {
+    // نسخة ثانية من التطبيق لإنشاء الحساب بدون إخراج المدير من جلسته
+    let app = firebase.apps.find(a => a.name === 'secondary');
+    if (!app) app = firebase.initializeApp(FIREBASE_CONFIG, 'secondary');
+    return app.auth();
 }
 
-function requestLogout() {
-    openConfirmDialog(t('logoutTitle'), t('logoutMsg'), () => doLogout(false));
+function genPassword() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+    const a = new Uint32Array(10);
+    crypto.getRandomValues(a);
+    return Array.from(a).map(n => chars[n % chars.length]).join('');
+}
+function fillGeneratedPass() { document.getElementById('newUserPass').value = genPassword(); }
+function appLink() { return location.origin + location.pathname + '?shop=' + shopId; }
+
+function setUsersMsg(msg, ok) {
+    const el = document.getElementById('usersMsg');
+    el.textContent = msg || '';
+    el.className = msg ? ('text-xs font-bold px-3 py-2 rounded-xl ' + (ok ? 'bg-emerald-100 text-emerald-800' : 'bg-red-50 border border-red-200 text-red-600')) : 'hidden';
 }
 
-function doLogout(forced) {
-    currentUser = null;
-    try { localStorage.removeItem(STORAGE_KEYS.SESSION); } catch (e) {}
-    ['productDetailModal', 'addModal', 'backupModal', 'aiModal', 'historyModal', 'disposeModal', 'imageViewer', 'pinModal', 'drawerOverlay'].forEach(id => {
-        const el = document.getElementById(id); if (el) el.classList.add('hidden');
+function openUsersModal() {
+    if (!isAdmin()) return;
+    setUsersMsg('');
+    document.getElementById('newUserCred').classList.add('hidden');
+    document.getElementById('usersModal').classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+    renderUsersModal();
+}
+function closeUsersModal() {
+    document.getElementById('usersModal').classList.add('hidden');
+    document.body.style.overflow = '';
+}
+
+function renderUsersModal() {
+    const el = document.getElementById('usersList');
+    const arr = Object.values(usersMap).sort((a, b) => ((b.role === 'admin' || isAdminEmail(b.email)) - (a.role === 'admin' || isAdminEmail(a.email))) || String(a.name).localeCompare(String(b.name)));
+    usersListIds = arr.map(u => u.id);
+    if (!arr.length) { el.innerHTML = `<div class="text-center py-6 text-xs font-bold text-slate-500">${t('usersEmpty')}</div>`; return; }
+    el.innerHTML = arr.map((u, i) => {
+        const adm = u.role === 'admin' || isAdminEmail(u.email);
+        const me = currentUser && u.id === currentUser.id;
+        return `<div class="bg-white border border-slate-200 rounded-2xl p-3 flex items-center gap-2.5">
+            ${avatarHtml(u.id, u.name, 36)}
+            <div class="flex-1 min-w-0">
+                <div class="text-sm font-extrabold text-slate-900 truncate">${escapeHtml(u.name)} <span class="text-[9px] ${adm ? 'bg-emerald-500 text-slate-900' : 'bg-slate-200 text-slate-700'} px-1.5 py-0.5 rounded-md align-middle">${adm ? t('usersAdminRole') : t('usersStaffRole')}</span></div>
+                <div class="text-[11px] text-slate-500 truncate" dir="ltr">${escapeHtml(u.email)}</div>
+            </div>
+            <button onclick="sendResetFor(${i})" title="${t('usersReset')}" class="p-2 rounded-xl bg-sky-50 text-sky-700 border border-sky-200 active:scale-95 transition"><i data-lucide="mail" class="w-4 h-4"></i></button>
+            ${(adm || me) ? '' : `<button onclick="removeUserAccess(${i})" class="p-2 rounded-xl bg-red-50 text-red-600 border border-red-200 active:scale-95 transition"><i data-lucide="user-x" class="w-4 h-4"></i></button>`}
+        </div>`;
+    }).join('');
+    lucide.createIcons();
+}
+
+async function createUserAccount(e) {
+    e.preventDefault();
+    if (!isAdmin() || !auth) return;
+    const name = getVal('newUserName').trim();
+    const email = normEmail(getVal('newUserEmail'));
+    const pw = getVal('newUserPass');
+    setUsersMsg('');
+    if (name.length < 2) { setUsersMsg(t('authNameShort')); return; }
+    if (!validEmail(email)) { setUsersMsg(t('authEmailBad')); return; }
+    if (pw.length < 6) { setUsersMsg(t('authPassShort')); return; }
+    const btn = document.getElementById('newUserSubmit');
+    btn.disabled = true; btn.classList.add('opacity-60');
+    let existed = false;
+    try {
+        const sAuth = secondaryAuth();
+        try { await withTimeout(sAuth.createUserWithEmailAndPassword(email, pw), 20000); }
+        catch (err) { if (err && err.code === 'auth/email-already-in-use') existed = true; else throw err; }
+        try { await sAuth.signOut(); } catch (err) {}
+        await withTimeout(shopRef().collection('users').doc(email).set(clean({
+            id: email, email, name, photo: '', role: 'staff', createdAt: nowIso(), createdBy: currentUser.email
+        })), 20000);
+        document.getElementById('newUserForm').reset();
+        showCredCard(email, existed ? '' : pw, existed);
+        showToast(t('usersCreated'), 'success');
+    } catch (err) {
+        console.error(err);
+        setUsersMsg(authErrorText(err));
+    } finally { btn.disabled = false; btn.classList.remove('opacity-60'); }
+}
+
+function showCredCard(email, pw, existed) {
+    const link = appLink();
+    lastCredText = `${t('usersAppLink')}: ${link}\n${t('authEmail')}: ${email}` + (pw ? `\n${t('authPass')}: ${pw}` : '');
+    const box = document.getElementById('newUserCred');
+    box.innerHTML = `
+        <div class="text-xs font-extrabold text-violet-900 mb-2 flex items-center gap-1.5"><i data-lucide="key-round" class="w-4 h-4 text-violet-600"></i>${t('usersCredTitle')}</div>
+        <div class="space-y-1.5 text-[11px] font-bold text-slate-700">
+            <div><span class="text-slate-500">${t('usersAppLink')}:</span> <span dir="ltr" class="break-all">${escapeHtml(link)}</span></div>
+            <div><span class="text-slate-500">${t('authEmail')}:</span> <span dir="ltr" class="break-all">${escapeHtml(email)}</span></div>
+            ${pw ? `<div><span class="text-slate-500">${t('authPass')}:</span> <span dir="ltr" class="font-mono font-extrabold">${escapeHtml(pw)}</span></div>` : ''}
+            ${existed ? `<div class="text-amber-700">${t('usersExistsNote')}</div>` : ''}
+        </div>
+        <button type="button" onclick="copyCred()" class="mt-2.5 w-full bg-violet-600 hover:bg-violet-700 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 active:scale-95 transition">
+            <i data-lucide="copy" class="w-4 h-4"></i>${t('usersCopyCred')}
+        </button>`;
+    box.classList.remove('hidden');
+    lucide.createIcons();
+}
+
+function copyCred() {
+    copyToClipboard(lastCredText).then(() => showToast(t('copiedToClipboard'), 'success')).catch(() => { prompt('', lastCredText); });
+}
+
+async function sendResetFor(i) {
+    const u = usersMap[usersListIds[i]];
+    if (!u || !auth) return;
+    try { await auth.sendPasswordResetEmail(u.email); showToast(t('usersResetSent'), 'success'); }
+    catch (err) { console.error(err); showToast(authErrorText(err), 'error'); }
+}
+
+function removeUserAccess(i) {
+    const u = usersMap[usersListIds[i]];
+    if (!u || !isAdmin()) return;
+    openConfirmDialog(t('usersRemoveTitle'), t('usersRemoveMsg', u.name), () => {
+        shopRef().collection('users').doc(u.id).delete()
+            .then(() => showToast(t('usersRemoved'), 'success'))
+            .catch(onWriteError);
     });
-    setAuthMode('login');
-    updateAuthVisibility();
-    if (forced) showToast(t('loggedOutForced'), 'warning');
 }
 
 function openImageSrc(src) {
@@ -2898,8 +3144,9 @@ function triggerAlertCheck(manualClick = false) {
 // ==========================================
 // 🔒 حماية نافذة النسخ الاحتياطي برمز
 // ==========================================
-const BACKUP_PIN_HASH = '922f331e31b9906aa30534457003b1942e311401804ccff5c2437a188d33755d';
+const CODE_HASH = '922f331e31b9906aa30534457003b1942e311401804ccff5c2437a188d33755d';
 let backupUnlocked = false;
+let pinCallback = null;
 
 async function sha256Hex(str) {
     const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
@@ -2908,7 +3155,7 @@ async function sha256Hex(str) {
 
 function openBackupModal() {
     if (backupUnlocked) { showBackupModal(); return; }
-    openPinModal();
+    requestCode(t('pinTitleDefault'), () => { backupUnlocked = true; showBackupModal(); });
 }
 
 function showBackupModal() {
@@ -2917,26 +3164,32 @@ function showBackupModal() {
     lucide.createIcons();
 }
 
-function openPinModal() {
+// يفتح نافذة إدخال الكود، وينفّذ الإجراء فقط إذا كان الكود صحيحاً
+function requestCode(title, cb) {
+    pinCallback = cb;
     const input = document.getElementById('pinInput');
     input.value = '';
+    document.getElementById('pinTitle').textContent = title || t('pinTitleDefault');
     document.getElementById('pinError').classList.add('hidden');
     document.getElementById('pinModal').classList.remove('hidden');
     lucide.createIcons();
     setTimeout(() => input.focus(), 50);
 }
 
-function closePinModal() { document.getElementById('pinModal').classList.add('hidden'); }
+function closePinModal() {
+    document.getElementById('pinModal').classList.add('hidden');
+    pinCallback = null;
+}
 
 async function submitPin(e) {
     if (e) e.preventDefault();
     const val = document.getElementById('pinInput').value.trim();
     let ok = false;
-    try { ok = (await sha256Hex(val)) === BACKUP_PIN_HASH; } catch (err) { ok = false; }
+    try { ok = (await sha256Hex(val)) === CODE_HASH; } catch (err) { ok = false; }
     if (ok) {
-        backupUnlocked = true;
+        const cb = pinCallback;
         closePinModal();
-        showBackupModal();
+        if (cb) cb();
     } else {
         document.getElementById('pinError').classList.remove('hidden');
         document.getElementById('pinInput').value = '';
@@ -2955,6 +3208,8 @@ function prepareExportData() {
             [currentLang === 'ar' ? 'تاريخ الدخول' : 'Entry Date']: b.entryDate || '',
             [currentLang === 'ar' ? 'تاريخ الانتهاء' : 'Expiry Date']: b.expiryDate,
             [currentLang === 'ar' ? 'الكمية' : 'Quantity']: b.qty,
+            [currentLang === 'ar' ? 'السعر' : 'Price']: (b.price != null && b.price !== '') ? b.price : '',
+            [currentLang === 'ar' ? 'القيمة الإجمالية' : 'Total Value']: parseFloat(b.price) > 0 ? parseFloat(b.price) * (parseInt(b.qty) || 0) : '',
             [currentLang === 'ar' ? 'أيام التنبيه' : 'Alert Days']: b.alertDays,
             [currentLang === 'ar' ? 'الحالة' : 'Status']: st.label,
             [currentLang === 'ar' ? 'الأيام المتبقية' : 'Days Remaining']: st.days,
@@ -2973,15 +3228,15 @@ function exportExcelWithImages() {
         showToast(t('exportingImages'), 'warning');
 
         const headers = currentLang === 'ar'
-            ? ['الصورة', 'الباركود', 'اسم الصنف', 'القسم', 'تاريخ الدخول', 'تاريخ الانتهاء', 'الكمية', 'أيام التنبيه', 'الحالة', 'الأيام المتبقية']
-            : ['Image', 'Barcode', 'Product Name', 'Category', 'Entry Date', 'Expiry Date', 'Quantity', 'Alert Days', 'Status', 'Days Remaining'];
+            ? ['الصورة', 'الباركود', 'اسم الصنف', 'القسم', 'تاريخ الدخول', 'تاريخ الانتهاء', 'الكمية', 'أيام التنبيه', 'الحالة', 'الأيام المتبقية', 'السعر']
+            : ['Image', 'Barcode', 'Product Name', 'Category', 'Entry Date', 'Expiry Date', 'Quantity', 'Alert Days', 'Status', 'Days Remaining', 'Price'];
         const rows = batches.map(b => {
             const st = getBatchStatus(b);
             return {
                 image: b.image || '', barcode: b.barcode || '', name: b.name,
                 category: getCategoryLabel(b.category), entryDate: b.entryDate || '',
                 expiryDate: b.expiryDate, qty: b.qty, alertDays: b.alertDays,
-                status: st.label, days: st.days
+                status: st.label, days: st.days, price: (b.price != null && b.price !== '') ? b.price : ''
             };
         });
 
@@ -3078,6 +3333,7 @@ ${allStrings.map(s => `<si><t xml:space="preserve">${escapeXml(s)}</t></si>`).jo
             sheetData += `<c r="H${r}"><v>${row.alertDays}</v></c>`;
             sheetData += `<c r="I${r}" t="s"><v>${stringIndex[row.status]}</v></c>`;
             sheetData += `<c r="J${r}"><v>${row.days}</v></c>`;
+            if (row.price !== '') sheetData += `<c r="K${r}"><v>${row.price}</v></c>`;
             sheetData += `</row>`;
         });
         sheetData += '</sheetData>';
@@ -3093,11 +3349,12 @@ ${allStrings.map(s => `<si><t xml:space="preserve">${escapeXml(s)}</t></si>`).jo
 <col min="8" max="8" width="12" customWidth="1"/>
 <col min="9" max="9" width="20" customWidth="1"/>
 <col min="10" max="10" width="15" customWidth="1"/>
+<col min="11" max="11" width="12" customWidth="1"/>
 </cols>`;
 
         zip.file('xl/worksheets/sheet1.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-<dimension ref="A1:J${rows.length + 1}"/>
+<dimension ref="A1:K${rows.length + 1}"/>
 ${cols}
 ${sheetData}
 <drawing r:id="rId1"/>
@@ -3299,6 +3556,8 @@ function importData(event) {
                     const expiryDate = row['تاريخ الانتهاء'] || row['Expiry Date'] || row['expiryDate'] || row['Expiry'] || '';
                     const qty = parseInt(row['الكمية'] || row['Quantity'] || row['qty'] || 1) || 1;
                     const alertDays = parseInt(row['أيام التنبيه'] || row['Alert Days'] || row['alertDays'] || 7) || 7;
+                    const priceRaw = row['السعر'] ?? row['Price'] ?? row['price'] ?? '';
+                    const price = priceRaw === '' ? null : (parseFloat(priceRaw) || null);
                     let category = 'other';
                     const catLower = String(categoryLabel).toLowerCase();
                     if (catLower.includes('ألبان') || catLower.includes('dairy')) category = 'dairy';
@@ -3307,7 +3566,7 @@ function importData(event) {
                     else if (catLower.includes('حلو') || catLower.includes('sweet')) category = 'sweets';
                     else if (catLower.includes('مجمد') || catLower.includes('frozen')) category = 'frozen';
                     if (!name) return null;
-                    return { id: 'batch-' + Date.now() + '-' + idx, barcode: String(barcode), name: String(name), category, entryDate: String(entryDate), expiryDate: String(expiryDate), qty, alertDays, image: '' };
+                    return { id: 'batch-' + Date.now() + '-' + idx, barcode: String(barcode), name: String(name), category, entryDate: String(entryDate), expiryDate: String(expiryDate), qty, alertDays, price, image: '' };
                 }).filter(Boolean);
                 if (importedBatches.length === 0) { showToast(t('importInvalid'), 'error'); return; }
                 openConfirmDialog(
@@ -3315,7 +3574,7 @@ function importData(event) {
                     currentLang === 'ar' ? `سيتم استبدال البيانات الحالية بـ ${importedBatches.length} صنف.` : `Replace with ${importedBatches.length} items?`,
                     () => {
                         const nc = {};
-                        importedBatches.forEach(b => { if (b.barcode) nc[b.barcode] = { name: b.name, category: b.category, image: b.image, alertDays: b.alertDays }; });
+                        importedBatches.forEach(b => { if (b.barcode) nc[b.barcode] = { name: b.name, category: b.category, image: b.image, alertDays: b.alertDays, price: b.price }; });
                         replaceAllData(importedBatches, nc);
                         closeBackupModal();
                         showToast(t('importSuccess', importedBatches.length), 'success');
